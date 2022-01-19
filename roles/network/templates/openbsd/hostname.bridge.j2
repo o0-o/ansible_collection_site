@@ -1,0 +1,23 @@
+{# vim: ts=8:sw=8:sts=8:noet:ft=jinja2
+
+Configure bridges on an OpenBSD host.
+
+We assume the bridge requirements are simple and do not require STP or
+other more advanced config. Layer 2 forwarding is not enabled so bridge
+members can be filtered with pf like any other interface.
+
+#}
+{{	default_comment_header
+	| comment(	prefix=default_comment_prefix | default(),
+			postfix=default_comment_postfix | default() ) }}
+
+description "{{	( net[current_bridge]['description'] + ' Bridge')
+		| default('Bridge') }}"
+
+# Members
+{% for dev in current_bridge_members %}
+add {{dev}}
+{% endfor %}
+
+# Bring Up {{current_bridge_dev}}
+up

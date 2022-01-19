@@ -1,0 +1,52 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+- name: save net vars
+  ansible.builtin.blockinfile:
+    path: "{{cwd}}/inventory/group_vars\
+      /{{site['name']}}_{{site['etld'] | regex_replace('\\.', '_') }}.yml"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK - Network"
+    insertafter: '^site: .*'
+    block: |
+
+      net:
+        {{ net | to_nice_yaml(width=1023, indent=2) | indent(2) }}
+    backup: yes
+  delegate_to: 127.0.0.1
+
+- name: restart network (openbsd)
+  ansible.builtin.shell:
+    cmd: >
+      pfctl -nf /etc/pf.conf &&
+      pfctl -a '*' -F rules &&
+      pfctl -f /etc/pf.conf &&
+      sh /etc/netstart
+  become: yes
+  when: ansible_system | lower == 'openbsd'
+  listen: restart network
+
+- name: restart network (linux)
+  ansible.builtin.shell:
+    cmd: >
+      { systemctl is-active --quiet NetworkManager.service &&
+        systemctl restart NetworkManager.service &&
+        nmcli networking off &&
+        nmcli networking on; } ||
+      { systemctl is-active --quiet systemd-networkd.service &&
+        systemctl restart systemd-networkd.service; }
+  become: yes
+  when: ansible_system | lower == 'linux'
+  listen: restart network
+
+- name: restart network (freebsd)
+  ansible.builtin.shell:
+    cmd: >
+      service netif restart &&
+      service routing restart
+  become: yes
+  when: ansible_system | lower == 'freebsd'
+  listen: restart network
+
+- name: get facts after network restart
+  ansible.builtin.setup:
+  listen: restart network

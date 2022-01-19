@@ -1,0 +1,27 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Loop through VLANs configured on the current interface and recursively
+# configure them.
+#
+########################################################################
+
+- name: Initialize empty VLAN list
+  ansible.builtin.set_fact:
+    vlan_dicts: []
+
+- name: Prepare a list of VLAN objects (OpenBSD)
+  ansible.builtin.set_fact:
+    vlan_dicts: "{{ vlan_dicts
+                    | default([])
+                    + [{  'dev':  'vlan' + net[vlan_net_item]['id'] | string,
+                          'net': vlan_net_item }] }}"
+  loop: "{{ current_iface['vlan'] | default([]) }}"
+  loop_control:
+    loop_var: vlan_net_item
+
+- name: Configure VLANS
+  ansible.builtin.include_tasks: cfg_iface.yml
+  loop: "{{vlan_dicts}}"
+  loop_control:
+    loop_var: vlan_item

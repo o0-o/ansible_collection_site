@@ -1,0 +1,83 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure networks, interfaces and hostname
+#
+########################################################################
+
+- name: Initialize empty updated interface list
+  ansible.builtin.set_fact:
+    update_iface: []
+
+# Loops are not supported on blocks, so we must delegate to a task
+- name: Get or verify device names for interfaces with MAC addresses
+  ansible.builtin.include_tasks: get_dev_from_mac.yml
+  loop: "{{ iface | default([]) }}"
+  loop_control:
+    loop_var: iface_item
+    index_var: iface_index
+
+- name: Use updated interface definitions
+  ansible.builtin.set_fact:
+    iface: "{{update_iface}}"
+  changed_when: true
+  when: iface | default([]) != update_iface | default([])
+  notify: save host vars
+
+# LAN addressing scheme follows: 10.site.subnet.host. Subnets are
+# randomly assigned between 2 and 255 (correlating to VLANs).
+
+# To assign VLANs to new or unconfigured networks, we need a list of
+# currently used network IDs to avoid collisions.
+- name: Get list of used network IDs
+  set_fact:
+    net_ids: "{{ net_ids | default([]) | union([net_item['id']]) }}"
+  when:
+  - net_item['id'] is defined
+  - net_item['id'] | default() not in [0, 1] #0 and 1 reserved
+  loop: "{{ net | dict2items | flatten(levels=1) }}"
+  loop_control:
+    loop_var: net_item
+
+- name: Initialize empty updated network dictionary
+  ansible.builtin.set_fact:
+    update_net: {}
+
+- name: Configure networks
+  ansible.builtin.include_tasks: cfg_net.yml
+  loop: "{{ net | default({}) | dict2items | flatten(levels=1) }}"
+  loop_control:
+    loop_var: net_item
+
+- name: Sanity check new network definitions
+  ansible.builtin.assert:
+    that: net | default({}) | length == update_net | default({}) | length
+    quiet: true
+
+- name: Use updated network definitions
+  ansible.builtin.set_fact:
+    net: "{{update_net}}"
+  changed_when: true
+  when: net | default({}) != update_net | default({})
+  notify: save net vars
+
+- name: Configure interfaces
+  ansible.builtin.include_tasks: cfg_iface.yml
+  loop: "{{iface | default([]) }}"
+  loop_control:
+    loop_var: iface_item
+
+- name: Configure bridges
+  ansible.builtin.include_tasks: cfg_bridge.yml
+  when: bridge_item is defined
+  loop: "{{ iface
+            | default([])
+            | selectattr('bridge', 'defined')
+            | map(attribute='bridge')
+            | unique }}"
+  loop_control:
+    loop_var: bridge_item
+
+- name: Configure hostname
+  ansible.builtin.include_tasks: cfg_hostname.yml
+  when: iface is defined

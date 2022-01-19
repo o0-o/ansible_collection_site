@@ -1,0 +1,43 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Assign network IDs to networks unless an address pool is defined or it
+# is the rescue interface.
+#
+########################################################################
+
+- name: "Use {{net_item['key']}} if it is already configured"
+  block:
+
+  # WAN networks are configured with address pools and LAN networks
+  # are configured by VLAN.
+
+  - name: "Network {{net_item['key']}} is already configured"
+    ansible.builtin.assert:
+      that: >
+        net_item['value']['addr'] is defined or
+        net_item['value']['id'] is defined or
+        net_item['key'] == 'rescue'
+      quiet: true
+
+  - name: "Use {{net_item['key']}} as currently configured"
+    ansible.builtin.set_fact:
+      update_net: "{{ update_net
+                      | combine({net_item['key']: net[net_item['key']]}) }}"
+
+  rescue:
+
+  - name: Generate random network ID
+    ansible.builtin.set_fact:
+      rand_id: "{{  range(2, 256)
+                    | list
+                    | difference( net_ids | default([]) )
+                    | random(seed=net_item['key']) }}"
+    changed_when: true
+
+  - name: "Assign network ID {{rand_id}} to {{net_item['key']}}"
+    ansible.builtin.set_fact:
+      update_net: >
+        {{ update_net | combine({ net_item['key']: net_vals}) }}
+    vars:
+      net_vals: "{{ net[net_item['key']] | combine({'id': rand_id}) }}"

@@ -1,0 +1,84 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure interfaces based on iface list in host_vars and net dict in
+# group_vars
+#
+# Interfaces are configured in the following order: CARP, VLAN, physical
+# interface. This allows interfaces with a limited address pool (WAN) to
+# have only a CARP address.
+#
+# In addition to CARP and simple IPv4, pf tables entries, routes and MTU
+# are configured in the hostname.if files. Description and group are
+# configured based on the net dict.
+#
+########################################################################
+
+- name: Set variables for interface configuration
+  ansible.builtin.include_tasks: set_iface_vars.yml
+
+- name: "The MTU of {{current_iface['dev']}} is {{mtu_var}}"
+  set_fact:
+    current_mtu: "{{mtu_var}}"
+  vars:
+    mtu_var: "{{ [  current_mtu | default(1500) | int,
+                    current_net['mtu'] | default(1500) | int ] | max }}"
+
+# CARP gets address precedence in case only 1 IP address is available.
+- name: Configure CARP
+  ansible.builtin.include_tasks: cfg_carp.yml
+  register: cfg_carp
+  when:
+    - current_iface['carp'] | default(false)
+    - ansible_system | lower in ['openbsd', 'freebsd']
+  vars:
+    carp_var: "{{ { 'dev': 'carp' + current_net['id'] | default() | string,
+                    'net': current_iface['net'] | default(),
+                    'vhid': current_net['id'] | default() } }}"
+
+- name: Reset variables after CARP configuration
+  ansible.builtin.include_tasks: set_iface_vars.yml
+  when: not cfg_carp['skipped']
+
+- block:
+
+  - name: "{{current_iface['dev']}} has VLANs"
+    ansible.builtin.assert:
+      that: current_iface['vlan'] is defined
+      quiet: true
+
+  - name: Configure VLANS
+    ansible.builtin.include_tasks: cfg_vlan.yml
+
+  - name: Reset variables after VLAN configuration
+    ansible.builtin.include_tasks: set_iface_vars.yml
+
+  rescue:
+
+  - name: "{{current_iface['dev']}} does not have VLANS"
+    ansible.builtin.assert:
+      that: current_iface['vlan'] is undefined
+      quiet: true
+
+- name: "Set the IP address of {{current_iface['dev']}}"
+  ansible.builtin.include_tasks: set_ip.yml
+
+- name: "Save {{current_iface['dev']}} configuration to {{inventory_hostname}}"
+  ansible.builtin.include_tasks: "{{lookup('first_found', tasks_files)}}"
+  vars:
+    tasks_files:
+      files:
+      - "save_iface_cfg_{{ ansible_distribution| lower }}-\
+        {{ ansible_distribution_version | lower() }}.yml"
+      - "save_iface_cfg_{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "save_iface_cfg_{{ ansible_distribution | lower }}.yml"
+      - "save_iface_cfg_{{ ansible_system | lower }}.yml"
+      - "save_iface_cfg_{{ ansible_os_family | lower }}.yml"
+      paths:
+      - tasks/
+
+- name: Reset MTU after configuring physical interface
+  set_fact:
+    current_mtu: 1500
+  when: vlan_item is undefined

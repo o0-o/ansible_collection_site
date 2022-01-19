@@ -1,0 +1,13 @@
+[NetDev]
+
+{% if current_iface['description']
+      | default(current_net['description']) is defined %}
+Description={{ current_iface['description'] | default(current_net['description']) }}
+{% endif %}
+Name={{current_iface['dev']}}
+{% if vlan_item is defined %}
+Kind=vlan
+
+[VLAN]
+Id={{net[current_iface['net']]['id']}}
+{% endif %}

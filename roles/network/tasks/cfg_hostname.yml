@@ -1,0 +1,73 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure the system hostname based on group_vars
+#
+# Set the hostname fqdn based on group_vars:
+# inventory hostname . subdomain* . site name. eTLD
+#
+# Ansible provides a module for setting hostname, but we also set short
+# and fqdn in the hosts file.
+#
+# *subdomain is optional and is set via the subdom variable.
+#
+########################################################################
+
+
+- name: "Set the FQDN to {{fqdn_candidate}}"
+  ansible.builtin.set_fact:
+    fqdn: "{{fqdn_candidate}}"
+  when:
+    - fqdn | default() != fqdn_candidate
+  vars:
+    fqdn_candidate: "{{ ( inventory_hostname_short + '.'
+                          + subdom | default('') + '.'
+                          + site['name'] + '.'
+                          + site['etld'] )
+                        | regex_replace('\\.+', '.') }}"
+
+- name: >
+    Try hostname module (failing sometimes on OpenBSD with Ansible Core 2.12.1)
+  block:
+
+  - name: "Configure hostname {{fqdn}}"
+    ansible.builtin.hostname:
+      name: "{{fqdn}}"
+    become: yes
+
+  rescue:
+
+  - name: "Configure hostname {{fqdn}} manually on OpenBSD"
+    ansible.builtin.copy:
+      dest: /etc/myname
+      content: "{{fqdn}}\n"
+    when: ansible_system | lower == 'openbsd'
+    become: yes
+
+  - name: Fail if not OpenBSD
+    ansible.builtin.fail:
+      msg: RIP
+    when: ansible_system | lower != 'openbsd'
+
+- name: Get IP address of the default gateway interface
+  ansible.builtin.script: "{{ lookup('first_found', scripts) }}"
+  args:
+    executable: /bin/sh
+  register: default_gw_iface_ip
+  changed_when: false
+  vars:
+    scripts:
+    - "get_default_gw_iface_ip_{{ansible_system | lower }}.sh"
+    - get_default_gw_iface_ip_bsd.sh
+
+# This is explicitly best practice for domain controllers but not a bad
+# idea in general.
+- name: Save hostname to hosts file
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: " {{fqdn}} {{inventory_hostname_short}}"
+    line: >
+      {{default_gw_iface_ip['stdout'].rstrip()}}
+      {{fqdn}}
+      {{inventory_hostname_short}}
+  become: yes

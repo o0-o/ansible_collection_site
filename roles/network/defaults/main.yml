@@ -1,0 +1,6 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+short_hostname: "{{ ansible_hostname | regex_replace('\\..*$', '') }}"
+domain: "{{ansible_domain}}"
+fqdn: "{{short_hostname}}.{{domain}}"

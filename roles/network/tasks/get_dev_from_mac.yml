@@ -1,0 +1,61 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Get the device name of an interface based on the MAC address
+#
+########################################################################
+
+- name: If device name is known, add it to updated interface list
+  block:
+
+  - name: "Named device is {{ iface_item['dev'] | default('undefined') }}"
+    ansible.builtin.assert:
+      that: iface_item['dev'] is defined
+      quiet: true
+
+  - name: "Device {{iface_item['dev']}} matches {{iface_item['mac_addr']}}"
+    ansible.builtin.shell:
+      cmd: >
+        dmesg |
+        grep -i ' {{iface_item['mac_addr']}}$' |
+        grep -q '{{iface_item['dev']}}'
+    changed_when: false
+    become: yes
+
+  - name: "Add {{iface_item['dev']}} to udpated interface list"
+    ansible.builtin.set_fact:
+      update_iface: "{{ update_iface | union([iface_item]) }}"
+
+  rescue:
+
+  # Randomized MAC addresses may show up in Ansible facts when we only
+  # want the persistent hardware address, so we have to use dmesg
+  - name: "Match {{iface_item['mac_addr']}} to a named device"
+    ansible.builtin.shell:
+      cmd: >
+        for dm in $(  dmesg |
+                      grep -i ' {{iface_item['mac_addr']}}$' |
+                      sed 's/[:[]//g' ); do
+          { networkctl status "$dm" ||
+            ifconfig "$dm"; } 1>/dev/null &&
+          echo "$dm" || true
+        done
+    register: match_mac_dev
+    changed_when: true
+    become: yes
+
+  - name: "Match {{iface_item['mac_addr']}} to {{dev_var}}"
+    set_fact:
+      update_iface: >
+        {{  update_iface
+            | union([ iface_item | combine({'dev': dev_var}) ]) }}
+    changed_when: true
+    vars:
+      dev_var: "{{match_mac_dev['stdout_lines'][0]}}"
+
+- name: Each interface must correspond to a named device in the OS
+  ansible.builtin.assert:
+    that: update_iface | length == ( iface_index + 1 )
+    fail_msg: "Error on {{  iface_item['mac_addr']
+                            | default(iface_item['dev']) }}"
+    quiet: true
