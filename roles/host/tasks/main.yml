@@ -1,0 +1,75 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Setup host
+#
+########################################################################
+
+- name: "Configure connection to {{inventory_hostname}}"
+  ansible.builtin.include_tasks: cfg_con.yml
+
+- name: Configure privilege escalation (become method)
+  ansible.builtin.include_tasks: cfg_become.yml
+  when: ansible_user != 'root'
+
+- name: Get platform
+  ansible.builtin.raw: uname
+  register: uname_reg
+  changed_when: false
+
+- name: Install macOS Dependencies
+  block:
+
+  - name: Gather facts
+    ansible.builtin.setup:
+
+  - name: Install command line tools
+    ansible.builtin.include_role:
+      name: elliotweiser.osx-command-line-tools
+
+  - name: Install Homebrew
+    ansible.builtin.include_role:
+      name: geerlingguy.mac.homebrew
+
+  when: uname_reg['stdout_lines'][0] | lower == 'darwin'
+
+- name: Configure Python interpreter
+  ansible.builtin.include_tasks: cfg_python.yml
+
+- name: Gather facts
+  ansible.builtin.setup:
+
+- name: Load platform-specific variables
+  ansible.builtin.include_tasks: vars.yml
+
+- name: Install any other Ansible dependencies (except on macOS)
+  ansible.builtin.package:
+    name: "{{ansible_dependencies}}"
+    state: present
+  become: yes
+  when: ansible_system != 'Darwin'
+
+- name: Install any other Ansible dependencies (macOS)
+  community.general.homebrew:
+    name: "{{ansible_dependencies}}"
+    state: installed
+  when: ansible_system == 'Darwin'
+
+- name: Configure SELinux
+  ansible.builtin.include_tasks: cfg_selinux.yml
+
+# The precedence is site['tz'], tz (to override), and then GMT.
+# Originally, the idea was to use the timezone of localhost as a
+# default, but the formats used in date_time['tz'] aren't always
+# accepted by the community.general.timezone module.
+- name: Define timezone
+  ansible.builtin.set_fact:
+    site: "{{ site | default({}) | combine({'tz': timezone}) }}"
+  vars:
+    timezone: "{{ site['tz'] | default( tz | default('GMT') ) }}"
+  delegate_to: 127.0.0.1
+
+- name: "Set timezone to {{site['tz']}}"
+  community.general.timezone:
+    name: "{{site['tz']}}"
+  become: yes

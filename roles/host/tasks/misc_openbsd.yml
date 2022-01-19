@@ -1,0 +1,47 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+# https://man.openbsd.org/accton.8
+- name: Enable accounting
+  ansible.builtin.service:
+    name: accounting
+    enabled: yes
+
+# Don't plan on using ipv6 at all so disable SLAACD
+- name: Disable slaacd (ipv6)
+  ansible.builtin.service:
+    name: slaacd
+    enabled: no
+    state: stopped
+
+# https://man.openbsd.org/free.3
+# https://marc.info/?l=openbsd-tech&m=152536315412851&w=2
+- name: Harden malloc
+  ansible.posix.sysctl:
+    name: vm.malloc_conf
+    value: SU
+    sysctl_set: yes
+    state: present
+
+# Reboot on kernel panic instead of dropping to debugger
+- name: Disable ddb panic
+  ansible.posix.sysctl:
+    name: ddb.panic
+    value: 0
+    sysctl_set: yes
+    state: present
+
+- name: Check if altroot partition exists
+  ansible.builtin.shell:
+    cmd: 'grep "[[:space:]]/altroot[[:space:]]*ffs[[:space:]]*xx" /etc/fstab'
+  register: altroot_mount_reg
+  changed_when: false
+  failed_when: altroot_mount_reg['rc'] not in [ 0,1 ]
+
+- name: Configure daily root backup if altroot mount is configured
+  ansible.builtin.lineinfile:
+    path: /etc/daily.local
+    line: 'ROOTBACKUP=1'
+    create: yes
+    backup: yes
+  when: altroot_mount_reg['rc'] == 0

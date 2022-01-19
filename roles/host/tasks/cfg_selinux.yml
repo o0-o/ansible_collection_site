@@ -1,0 +1,45 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure SELinux
+#
+########################################################################
+
+- name: Check if SELinux is available
+  ansible.builtin.shell:
+    cmd: which getenforce || command -v getenforce
+  register: selinux_check_reg
+  changed_when: false
+  failed_when: false
+
+- name: SELinux is available
+  ansible.builtin.set_fact:
+    selinux_available: true
+  when: selinux_check_reg['rc'] == 0
+
+- name: SELinux is unavailable
+  ansible.builtin.set_fact:
+    selinux_available: false
+  when: selinux_available is undefined
+
+- name: If SELinux is available, ensure it is enabled and policy is applied
+  block:
+
+  - name: Enable SELinux
+    ansible.posix.selinux:
+      policy: targeted
+      state: enforcing
+    become: yes
+
+  - name: Apply all policy contexts recursively
+    ansible.builtin.shell:
+      cmd: >
+        /usr/sbin/restorecon -Frv /dev /etc /home /usr /var/lib /var/db
+        /var/local /var/log
+    register: apply_contexts_to_system_reg
+    changed_when: >
+      apply_contexts_to_system_reg['stdout_lines'][0] | default('') != ''
+    become: yes
+    when: not ansible_check_mode
+
+  when: selinux_available

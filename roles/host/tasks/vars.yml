@@ -1,0 +1,19 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+- name: Load platform-specific variables
+  ansible.builtin.include_vars: "{{lookup('first_found', vars_files)}}"
+  vars:
+    vars_files:
+      files:
+      - "{{ ansible_distribution| lower }}-\
+        {{ ansible_distribution_version | lower() }}.yml"
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "{{ ansible_distribution | lower }}.yml"
+      - "{{ ansible_service_mgr | lower }}.yml"
+      - "{{ ansible_system | lower }}.yml"
+      - "{{ ansible_os_family | lower }}.yml"
+      - /dev/null
+      paths:
+      - vars/

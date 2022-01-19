@@ -1,0 +1,44 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure the Ansible become method
+#
+# We don't assume Python is available yet on the host, so we are limited
+# to raw commands.
+#
+########################################################################
+
+- block:
+
+  - name: Privilege escalation (become method) is already configured
+    block:
+
+    - name: "{{ansible_become_method}} is configured and valid"
+      ansible.builtin.raw: "{{ansible_become_method}} true"
+      failed_when: ansible_become_method not in ['doas', 'sudo']
+      changed_when: false
+
+    rescue:
+
+    # Prefer doas if it is available
+    - name: Test doas
+      ansible.builtin.raw: doas true
+      changed_when: false
+
+    - name: Use doas for privilege escalation
+      ansible.builtin.set_fact:
+        ansible_become_method: doas
+      changed_when: true
+      notify: save host vars
+
+  rescue:
+
+  - name: Test sudo
+    ansible.builtin.raw: sudo true
+    changed_when: false
+
+  - name: Use sudo for privilege escalation
+    ansible.builtin.set_fact:
+      ansible_become_method: sudo
+    changed_when: true
+    notify: save host vars

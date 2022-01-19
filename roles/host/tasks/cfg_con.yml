@@ -1,0 +1,117 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure connection
+#
+########################################################################
+
+# The ansible_user variable may not be set when running on localhost
+- name: Configure user for localhost
+  block:
+
+    - name: Get the current user
+      ansible.builtin.raw: ps -o 'user=' -p $$
+      changed_when: false
+      register: current_user_reg
+
+    - name: "The current user is {{user_var}}"
+      ansible.builtin.set_fact:
+        ansible_user: "{{user_var}}"
+      vars:
+        user_var: "{{current_user_reg['stdout_lines'][0]}}"
+
+  when: ansible_connection | default('ssh') == 'local'
+
+- name: Configure SSH connection
+  block:
+
+  - name: "SSH host address is {{host_addr_var}}"
+    ansible.builtin.set_fact:
+      host_addr: "{{host_addr_var}}"
+    vars:
+      host_addr_var: "{{ ansible_host | default(inventory_hostname) }}"
+
+  - name: "{{host_addr}} is reachable"
+    ansible.builtin.shell:
+      cmd: "ping -c 2 {{host_addr}}"
+    changed_when: false
+    delegate_to: 127.0.0.1
+    when: ansible_host | default(inventory_hostname) != 'localhost'
+
+  # Must quote 'true' with raw module
+  - name: >
+      ssh://{{  ansible_user
+                | default('root') }}@{{host_addr}}:{{ ansible_port
+                                                      | default('22') }} is
+      functional
+    ansible.builtin.raw: 'true'
+    changed_when: false
+    when: ansible_connection | default('ssh') == 'ssh'
+
+  # If connection to host isn't functional it may be a Vagrant VM in
+  # which case, we can retrieve SSH parameters.
+  rescue:
+
+  # Look for Vagrant SSH configuration under FQDN but fall back to short
+  # hostname.
+  - name: Get SSH configuration from Vagrant
+    ansible.builtin.shell:
+      cmd: >
+        vagrant ssh-config {{inventory_hostname}} ||
+        vagrant ssh-config {{ inventory_hostname | split('.') | first }}
+    changed_when: false
+    register: vagrant_ssh_cfg_reg
+    delegate_to: 127.0.0.1
+
+  # Must quote 'true' with raw module
+  - name: >
+      ssh://{{ansible_user}}@{{ansible_host}}:{{ansible_port}} with key
+      {{ansible_ssh_private_key_file}} is functional
+    ansible.builtin.raw: 'true'
+    changed_when: false
+    vars:
+      ansible_user: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('User .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ansible_host: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('HostName .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ansible_port: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('Port .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ansible_ssh_private_key_file: "{{ vagrant_ssh_cfg_reg['stdout']
+                                        | regex_search( 'IdentityFile .*$',
+                                                        multiline=true )
+                                        | split(' ')
+                                        | last }}"
+
+  - name: >
+      Use ssh://{{ssh_user_var}}@{{ssh_host_var}}:{{ssh_port_var}} with key
+      {{ssh_key_var}}
+    ansible.builtin.set_fact:
+      ansible_host: "{{ssh_host_var}}"
+      ansible_port: "{{ssh_port_var}}"
+      ansible_user: "{{ssh_user_var}}"
+      ansible_ssh_private_key_file: "{{ssh_key_var}}"
+    changed_when: true
+    vars:
+      ssh_user_var: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('User .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ssh_host_var: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('HostName .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ssh_port_var: "{{ vagrant_ssh_cfg_reg['stdout']
+                        | regex_search('Port .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+      ssh_key_var: "{{  vagrant_ssh_cfg_reg['stdout']
+                       | regex_search('IdentityFile .*$', multiline=true)
+                        | split(' ')
+                        | last }}"
+    notify: save host vars
