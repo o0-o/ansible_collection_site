@@ -1,0 +1,16 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+# Determine the current working directory via the PWD environmental
+# variable. This is required when calling collection playbooks on the
+# commandline. Otherwise, the relative paths (./, ../, etc) are
+# determined relative to the collection playbook and not from the shell.
+cwd: "{{ lookup('env', 'PWD') }}"
+
+# Default comment variables are used in configuration templates.
+default_comment_prefix: "# vim: ts=8:sw=8:sts=8:noet\n#"
+ansible_comment_prefix: "# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible\n#"
+yaml_comment_prefix: "# vim: ts=2:sw=2:sts=2:et:ft=yaml\n#"
+default_comment_postfix: |
+  #
+  ########################################################################

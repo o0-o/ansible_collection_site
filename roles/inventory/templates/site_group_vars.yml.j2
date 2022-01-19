@@ -1,0 +1,118 @@
+{# vim: ts=2:sw=2:sts=2:et:ft=yaml
+
+Rewrite the site group vars file with current net values.
+
+#}
+---
+{{ (  default_comment_header | default()
+      + "
+This defines network variables. It should be written in yaml and named
+after the fully qualified domain name of the site, replacing periods
+with underscores.
+
+Example: site_example_com.yml
+
+The net variable is a list of semi-complex dictionaries that define
+the networks in the site. This includes addressing and routes, but
+also MTU which is generally an interface configuration but should be
+uniform across any given subnet.
+
+net:
+
+  This dictionary key should be a URL-compliant abbreviation of the
+  subnet or public network. 'wan', 'admin', and 'sales' are some
+  examples.
+
+
+  net_name:
+
+    Optionally, include a list of usable addresses. This is useful
+    when WAN allocations may not correspond to the entire usable
+    address space in a subnet or if we want to reserve some addresses.
+    Note that when the net role selects an IP in a public range, it
+    will eliminate any candidates that respond to echo requests (ping)
+    to avoid address conflicts. If the addr list is not provided, the
+    usable IP range is determined based on randomized private /24
+    subnet, or if the network has routes defined, the network is
+    determined based on the hop address. For public-facing networks,
+    a subnet mask must also be provided (see below).
+
+    addr:
+    - 192.0.2.2
+    - 192.0.2.3
+    - 192.0.2.4
+
+    The client list enumerates services that will be made available to
+    this subnet. Client networks are granted access to services
+    provided by hosts as defined by the service list. Servers are
+    defined in their host_vars file (per interface) and service
+    definitions are in the srv_def list that can be defined in any
+    user-editable inventory file, but are recommended to be set
+    globally.
+
+    client:
+    - wan
+    - echo
+    - ssh
+
+    Similar to the site description, give the network a short
+    description, limited to one line.
+
+    description: Human-readable name of the subnet
+
+    The subnet ID determines the 3rd octet of private subnet
+    addresses, the VLAN VID and the CARP VHID. Each subnet's ID must
+    be unique within a site. Subnet IDs are randomly generated (2-255)
+    if they are not provided. In general, the only reason to provide
+    one is to be compatible with existing VLAN infrastructure (for
+    instance if the public network is delivered via VLAN) or to
+    indicate that a network should not be configured as a VLAN
+    (id: 1). ID 0 is viable but reserved for the management subnet.
+
+    id: 0-255
+
+    Set the subnet mask for public-facing networks. If the subnet is
+    not provided in cidr format, the net role will convert it to cidr.
+    The default is 24 and this should not be changed for LANs.
+
+    mask: 24
+
+    Set this to change the default MTU which is determined by the OS,
+    but is generally 1500. This will be applied to all physical
+    interfaces participating in the subnet across all hosts and
+    switches. If an interface participates in multiple subnets, the
+    highest configured MTU is used. MTU is usually only defined to
+    configure jumbo frames (mtu: 9000).
+
+    mtu:
+
+    This determines if layer2 forwarding will be allowed within the
+    subnet across switch, software bridge and IaaS. This is often
+    referred to as \"isolation\" on switch platforms and can have other
+    names. If layer 3+ filtering should not be applied to intra-subnet
+    traffic, set this to true. It is false by default.
+
+    promiscuous: false
+
+    Set one or more routes with one or more next-hops. The dest
+    field of a default gateway may be set as 0.0.0.0/0, 0/0 or
+    default. Note that services defined in the client list are granted
+    to all routable networks within a given subnet.
+
+    route:
+    - dest: 0.0.0.0/0
+      hop: 192.0.2.1
+
+    Optionally, set upload bandwidth restrictions on an interface (in
+    kilobits per second). Currently, this is used for FQ-CoDel, but
+    more elaborate queueing might be implemented in the future. This
+    is expected be set for public networks only, but can be set for
+    any network (FQ-CoDel will be configured whenever a tx value is
+    defined).
+
+    tx:" )
+    | comment(  prefix=ansible_comment_prefix | default(),
+                postfix=default_comment_postfix | default() ) }}
+site: "{{ '{{ ' + site['name'] + '_' + site['etld'] | regex_replace('\\.', '_') + ' | default({}) }}' }}"
+
+# Add custom variables below:

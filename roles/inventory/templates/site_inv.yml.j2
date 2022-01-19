@@ -1,0 +1,21 @@
+{# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+Intial site inventory
+
+#}
+---
+{{  ( default_comment_header | default()
+      + "\nInventory for "
+      + site['name']
+      + "."
+      + site['etld']
+      + " (Site "
+      + site['id']
+      | string
+      + ")" )
+    | comment(  prefix=yaml_comment_prefix | default(),
+                postfix=default_comment_postfix | default() ) }}
+all:
+  children:
+    {{site['name']}}_{{ site['etld'] | regex_replace('\.', '_') }}:
+      hosts:

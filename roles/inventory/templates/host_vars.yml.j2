@@ -1,0 +1,213 @@
+{# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+Rewrite the host.yml host_vars file with current values of ansible user,
+Python interpreter and become method, as well as the interface list.
+
+#}
+---
+{{  ( default_comment_header | default()
+      + "
+This inventory file contains Ansible's user, Python interpreter and
+privilege escalation (become) variables as well as interface
+and service definitions for the host. It should be written in yaml
+format and named after the FQDN of the host.
+
+Ex: host.site.example.com.yml
+
+Ansible variables that affect how Ansible interacts with the host are
+defined first. Each of these will be set to a version of the variable
+that is prefixed with 'update_', the current value of the varible or
+an arbitrary default based on the most common values.
+
+This file is generated and updated by various roles in the o0-o.site
+collection. It is acceptable to make manual changes to the values of
+variables defined here; however, any additional variables will not
+persist." )
+    | comment(  prefix=yaml_comment_prefix | default(),
+                postfix=default_comment_postfix | default() ) }}
+{#
+
+TODO: improve the logic below. It's confusing and messy. Basically, each
+ansible_var should be set to itself unless update_ansible_var is set, in
+which case, update_ansible_var should be used (even if it has no value).
+If neither ansible_var or update_ansible_var is defined, or if the
+resulting value of ansible_var has no value, comment out the assignment.
+
+#}
+# If the inventory hostname doesn't resolve to a host (either as an IP
+# address, ssh host or domain name), specify an address or name here.
+{% if update_ansible_host is defined %}
+{% if update_ansible_host is not none and
+      update_ansible_host != '' %}
+ansible_host: {{update_ansible_host}}
+{% else %}
+#ansible_host:
+{% endif %}
+{% elif ansible_host is defined %}
+{% if ansible_host is not none and
+      ansible_host != '' %}
+ansible_host: {{ansible_host}}
+{% else %}
+#ansible_host:
+{% endif %}
+{% endif %}
+
+# This is the user Ansible uses to login to the host. The default is
+# root. When ansible_user is set to root, the ansible_user role will
+# generate a randomized administrator account, migrate the ssh key and
+# update the definition here.
+ansible_user: {{  update_ansible_user
+                  | default(ansible_user)
+                  | default('root') }}
+
+# This is determined by the ansible_dependencies role. Python 3 is
+# preferred to Python 2. Note that while Python 3 is available on
+# CentOS/RHEL 7, it is missing libraries needed by Ansible's SELinux
+# module and possibly others, so in those cases, Python 2 should be
+# used.
+{% if update_ansible_python_interpreter is defined %}
+{% if update_ansible_python_interpreter is not none and
+      update_ansible_python_interpreter != '' %}
+ansible_python_interpreter: {{update_ansible_python_interpreter}}
+{% else %}
+#ansible_python_interpreter:
+{% endif %}
+{% elif ansible_python_interpreter is defined %}
+{% if ansible_python_interpreter is not none and
+      ansible_python_interpreter != '' %}
+ansible_python_interpreter: {{ansible_python_interpreter}}
+{% else %}
+#ansible_python_interpreter:
+{% endif %}
+{% else %}
+#ansible_python_interpreter:
+{% endif %}
+
+# The ansible_user role will prefer doas if it is available.
+{% if update_ansible_become_method is defined %}
+{% if update_ansible_become_method is not none and
+      update_ansible_become_method != '' %}
+ansible_become_method: {{update_ansible_become_method}}
+{% else %}
+#ansible_become_method:
+{% endif %}
+{% elif ansible_become_method is defined %}
+{% if ansible_become_method is not none and
+      ansible_become_method != '' %}
+ansible_become_method: {{ansible_become_method}}
+{% else %}
+#ansible_become_method:
+{% endif %}
+{% else %}
+#ansible_become_method:
+{% endif %}
+
+# This will be 22 unless a host specifically requires something else (a
+# Vagrant VM for instance).
+ansible_port: {{  update_ansible_port
+                  | default(ansible_port)
+                  | default(22) }}
+
+# Optionally set a private key for the host. We don't require this in
+# case the private key isn't available on the system (for instance, if
+# it is stored in a Yubikey or similar hardware solution).
+{% if update_ansible_ssh_private_key_file is defined %}
+{% if update_ansible_ssh_private_key_file is not none and
+      update_ansible_ssh_private_key_file != '' %}
+ansible_ssh_private_key_file: {{update_ansible_ssh_private_key_file}}
+{% else %}
+#ansible_ssh_private_key_file:
+{% endif %}
+{% elif ansible_ssh_private_key_file is defined %}
+{% if ansible_ssh_private_key_file is not none and
+      ansible_ssh_private_key_file != '' %}
+ansible_ssh_private_key_file: {{ansible_ssh_private_key_file}}
+{% else %}
+#ansible_ssh_private_key_file:
+{% endif %}
+{% else %}
+#ansible_ssh_private_key_file:
+{% endif %}
+
+# The iface variable is a list of dictionaries that define interface
+# configuration on a host. Only variables that correspond to the host
+# are set here. Most network-related configuration is set in the
+# fqdn.yml file in the inventory/fqdn/group_vars directory.
+iface:
+
+  # - bridge: admin
+  #
+  #   Optionally, configure the interface in a software bridge on a
+  #   given network. The value should correspond to a key in the net
+  #   dictionary. All interfaces with the same name will be bridged
+  #   together with the specified network's VLAN. The bridge interface
+  #   number is determined by the id field in the specified network
+  #   (same as the VLAN VID). So in the exampel of admin above, if
+  #   network admin has an ID of 202, the bridge will be bridge202 and
+  #   will at least include this interface and vlan202.
+  #
+  #   dev: em0
+  #
+  #   The name of the device in the OS. Examples include: em10 ix3 re0.
+  #   Either dev or mac_addr must be defined for any given interface. If
+  #   mac_addr is defined, the net role will determine the device based
+  #   on dmesg and write it here.
+  #
+  #   description: Human-readable name or brief description
+  #
+  #   This can be set in the net dictionary but we can override it for
+  #   a specific physical interface here.
+  #
+  #   mac_addr: 00:00:00:00:00:00
+  #
+  #   The hardware address of the interface. This is used to identify
+  #   the interface via dmesg. It is not applied as a configuration.
+  #   Either mac_addr or dev must be set.
+  #
+  #   net: sales
+  #
+  #   Optionally, set the net variable to assign a network directly to
+  #   the physical interface. This value references the keys in the net
+  #   dictionary defined in fqdn.yml. Addressing, routes, mtu and other
+  #   network configuration are pulled from there. When the host is a
+  #   switch, this indicates the primary (untagged) VLAN.
+  #
+  #   random_mac: true
+  #
+  #   Set this to false to advertise the hardware MAC address on the
+  #   network instead of a randomized one. Some NICs have issues with
+  #   changing their MAC address. The default is true.
+  #
+  #   vlan:
+  #   - admin
+  #   - sales
+  #
+  #   Set a list of vlans to configure on this interface. Names should
+  #   correspond to keys in the net dictionary.
+  {{  update_iface
+      | default(iface)
+      | default([])
+      | to_nice_yaml(width=1023, indent=2)
+      | indent(2) }}
+# NOTE: CARP interfaces are created automatically for each net and vlan
+# configured on an interface. CARP device names and VHIDs correspond to
+# network IDS. If only one address is available (in the case of a public
+# network), it is given to the CARP interface. CARP and pfsync are
+# automatically negotiated when multiple gateways are defined in
+# inventory/fqdn.yml.
+
+# The srv variable is a list of services provided by the host and which
+# networks they should be configured on. Service definitions are defined
+# by the srv_def variable which is set in the all.yml group variables
+# file.
+srv:
+
+  # service:
+  # - net
+  {{  update_srv
+      | default(srv)
+      | default({})
+      | to_nice_yaml(width=1023, indent=2)
+      | indent(2) }}
+# Service definitions come from /etc/services or may be manually
+# configured in the all.yml inventory file via the srv_def dictionary.

@@ -1,0 +1,211 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Initialize Site Configuration
+#
+# This role may be interactive the first time it is run. It gathers
+# basic information about the site which cannot be derived or generated
+# and must come from the administrator.
+#
+########################################################################
+
+# Description
+- name: Site description
+  block:
+
+  - name: "The site description is {{site['description']}}"
+    ansible.builtin.assert:
+      that: site['description'] is defined
+      quiet: true
+
+  rescue:
+
+  - name: Get the site description
+    ansible.builtin.pause:
+      prompt: "Enter a brief description of the site. Ex: Northeast Campus"
+    register: descr_prompt
+    timeout: 60
+
+  - name: Define the site description
+    ansible.builtin.set_fact:
+      site: >
+        {{  site
+            | default({})
+            | combine({'description': descr_prompt['user_input'].rstrip()}) }}
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['description']}} is valid"
+    ansible.builtin.assert:
+      that: site['description'] | regex_search('^[\w\s\.()&/+]$') != ''
+      quiet: true
+
+# Site Name
+- name: Site name
+  block:
+
+  - block:
+
+    - name: "The site name is {{site['name']}}"
+      ansible.builtin.assert:
+        that: site['name'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_name}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'name': site_name}) }}"
+
+  rescue:
+
+  - name: Get the site name
+    ansible.builtin.pause:
+      prompt: "Enter an abbreviated name for the site. It must be at least 2 \
+        characters long and can only include lower case letters, numbers \
+        and/or dashes. It must begin with a letter and cannot end with a \
+        dash. \
+        Ex: campus-1"
+    register: name_prompt
+    timeout: 60
+
+  - name: Define the site name
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | combine({'name': name_prompt['user_input'].rstrip()}) }}"
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['name']}} is valid"
+    ansible.builtin.assert:
+      that: site['name'] | regex_search('^[a-z][a-z0-9-]*[a-z0-9]$') != ''
+      quiet: true
+
+# Registered Domain Name
+- name: Registered domain name
+  block:
+
+  - block:
+
+    - name: "The effective top level domain is {{site['etld']}}"
+      ansible.builtin.assert:
+        that: site['etld'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{etld}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'etld': etld}) }}"
+
+  rescue:
+
+  - name: Get the site domain name
+    ansible.builtin.pause:
+      prompt: "Enter the registered public domain name for this site. Ex: \
+        example.com"
+    register: etld_prompt
+    timeout: 60
+
+  - name: Define the effective top level domain (eTLD)
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | combine({'etld': etld_prompt['user_input'].rstrip()}) }}"
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['etld']}} is valid"
+    ansible.builtin.assert:
+      that: site['etld'] | regex_search('^[a-z][a-z0-9.-]*[a-z0-9]$') != ''
+      quiet: true
+
+# Site ID Number
+- name: Site ID
+  block:
+
+  - block:
+
+    - name: "The site ID is {{site['id']}}"
+      ansible.builtin.assert:
+        that: site['id'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_id}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'id': site_id}) }}"
+
+  rescue:
+
+  # Idempotence here depends on sites being created in order. For
+  # instance, if we create 3 sites and tear them down, the site IDs will
+  # be generated identically, but only if we create those sites in the
+  # same order. However if we create sites 1, 2 and then 3, we cannot
+  # delete site 2 and then wish to regenerate it with the same ID unless
+  # we also delete site 3. In production, this should not be an issue
+  # since site deletion/recreation should not happen, and even if it is
+  # necessary, the site ID can simply be set manually in the group
+  # variables file. Idempotence is included here simply as a best
+  # practice and for test cases where entire environments may need to be
+  # built and rebuilt.
+
+  - name: Build site ID list
+    ansible.builtin.set_fact:
+      site_ids: "{{ site_ids | default([]) + [vars[group]['id']] }}"
+    when: vars[group]['id'] is defined
+    loop: "{{group_names}}"
+    loop_control:
+      loop_var: group
+
+  - name: Generate random site ID
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | combine({ 'id': range(0, 256)
+                                  | list
+                                  | difference( site_ids | default([]) )
+                                  | random(seed=site_fqdn) }) }}"
+    vars:
+      site_fqdn: "{{site['name']}}.{{site['etld']}}"
+
+  always:
+
+  - name: "{{site['id']}} is valid"
+    ansible.builtin.assert:
+      that: site['id'] | int in range(0,256)
+      quiet: true
+
+- block:
+
+  - name: "Site was created {{fts}}"
+    ansible.builtin.assert:
+      that: site['created'] is defined
+      quiet: true
+    vars:
+      fts: "{{ 'on %Y/%m/%d at %H:%M:%S GMT' | strftime(site['created']) }}"
+
+  rescue:
+
+  # ansible_date_time isn't available until ansible.builtin.setup is run
+  - name: Define current timestamp
+    ansible.builtin.shell:
+      cmd: date '+%s'
+    changed_when: false
+    register: current_timestamp
+    delegate_to: 127.0.0.1
+
+  - name: "{{site['name']}}.{{site['etld']}} was created {{fts}}"
+    ansible.builtin.set_fact:
+      site: "{{ site | combine({'created': ts}) }}"
+    changed_when: true
+    vars:
+      ts: "{{current_timestamp['stdout_lines'][0]}}"
+      fts: "{{  'on %Y/%m/%d at %H:%M:%S GMT'
+                | strftime(current_timestamp['stdout_lines'][0]) }}"
+    notify: save site vars
