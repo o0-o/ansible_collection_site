@@ -1,7 +1,7 @@
 o0_o.site.host
 =========
 
-Configure a generic host. Configuration here applies to any host including localhost.
+Configure a generic host. Configuration here can apply to any host including localhost and does not assume Python is available.
 
 Dependencies
 ------------
