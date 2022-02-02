@@ -1,23 +1,33 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
+- name: save service definitions
+  ansible.builtin.blockinfile:
+    path: "{{cwd}}/inventory/group_vars/all.yml"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: Service Definitions"
+    block: "{{  update_srv_def
+                | default(  srv_def
+                            | default({}) )
+                | to_nice_yaml(width=1023, indent=2)
+                | indent(2)
+                | trim }}"
+    backup: true
+  delegate_to: 127.0.0.1
+
 - name: save site vars
   ansible.builtin.blockinfile:
     path: "{{cwd}}/inventory/group_vars/all.yml"
-    marker: "# {mark} ANSIBLE MANAGED BLOCK - {{site_url}}"
-    insertafter: '#   description: An example location'
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: Site - {{site_uri}}"
     block: |
-      {{ site_url | regex_replace('\.', '_') }}:
+      {{site_group}}:
         {{ site | to_nice_yaml(width=1023, indent=2) | indent(2) }}
-    backup: yes
+    backup: true
   delegate_to: 127.0.0.1
-  vars:
-    site_url: "{{site['name']}}.{{site['etld']}}"
 
 - name: save host vars
   ansible.builtin.template:
     src: host_vars.yml.j2
     dest: "{{cwd}}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
-    backup: yes
+    backup: true
   delegate_to: 127.0.0.1

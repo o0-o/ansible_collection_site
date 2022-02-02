@@ -9,16 +9,16 @@
 - name: Configure user for localhost
   block:
 
-    - name: Get the current user
-      ansible.builtin.raw: ps -o 'user=' -p $$
-      changed_when: false
-      register: current_user_reg
+  - name: Get the current user
+    ansible.builtin.raw: ps -o 'user=' -p $$
+    changed_when: false
+    register: current_user_reg
 
-    - name: "The current user is {{user_var}}"
-      ansible.builtin.set_fact:
-        ansible_user: "{{user_var}}"
-      vars:
-        user_var: "{{current_user_reg['stdout_lines'][0]}}"
+  - name: "The current user is {{user_var}}"
+    ansible.builtin.set_fact:
+      ansible_user: "{{user_var}}"
+    vars:
+      user_var: "{{current_user_reg['stdout_lines'][0]}}"
 
   when: ansible_connection | default('ssh') == 'local'
 

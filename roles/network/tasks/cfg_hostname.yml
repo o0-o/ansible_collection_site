@@ -50,7 +50,7 @@
     when: ansible_system | lower != 'openbsd'
 
 - name: Get IP address of the default gateway interface
-  ansible.builtin.script: "{{ lookup('first_found', scripts) }}"
+  ansible.builtin.script: "{{lookup('first_found', scripts)}}"
   args:
     executable: /bin/sh
   register: default_gw_iface_ip

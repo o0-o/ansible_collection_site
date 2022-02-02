@@ -17,7 +17,7 @@ the networks in the site. This includes addressing and routes, but
 also MTU which is generally an interface configuration but should be
 uniform across any given subnet.
 
-net:
+nets:
 
   This dictionary key should be a URL-compliant abbreviation of the
   subnet or public network. 'wan', 'admin', and 'sales' are some
@@ -111,8 +111,12 @@ net:
     defined).
 
     tx:" )
+    | wordwrap(70)
     | comment(  prefix=ansible_comment_prefix | default(),
                 postfix=default_comment_postfix | default() ) }}
-site: "{{ '{{ ' + site['name'] + '_' + site['etld'] | regex_replace('\\.', '_') + ' | default({}) }}' }}"
+site: "{{ '{{ ' + site_group + ' | default({}) }}' }}"
+
+# BEGIN ANSIBLE MANAGED BLOCK: Network
+# END ANSIBLE MANAGED BLOCK: Network
 
 # Add custom variables below:

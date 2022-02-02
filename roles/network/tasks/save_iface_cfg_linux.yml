@@ -31,7 +31,7 @@
       ansible.builtin.shell:
         cmd: nmcli connection show {{nm_con_name}}
       changed_when: false
-      become: yes
+      become: true
 
     rescue:
 
@@ -48,7 +48,7 @@
           grep '{{current_iface['dev']}}$' |
           cut -d ':' -f 1
       changed_when: false
-      become: yes
+      become: true
       register: con_to_delete_reg
 
   - name: The connection type is ethernet (physical interface)
@@ -74,10 +74,10 @@
       conn_name: "{{nm_con_name}}"
       ifname: "{{current_iface['dev']}}"
       type: "{{nm_iface_type}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'ethernet'
     - current_iface_ip | default('') == ''
@@ -90,12 +90,12 @@
       conn_name: "{{nm_con_name}}"
       ifname: "{{current_iface['dev']}}"
       type: "{{nm_iface_type}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: auto
       dhcp_client_id: duid
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'ethernet'
     - current_iface_ip | default('') | lower == 'dhcp'
@@ -108,12 +108,12 @@
       conn_name: "{{nm_con_name}}"
       ifname: "{{current_iface['dev']}}"
       type: "{{nm_iface_type}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: manual
       ip4: "{{current_iface_ip}}/{{current_mask}}"
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'ethernet'
     - current_iface_ip | default() | ansible.netcommon.ipv4
@@ -132,7 +132,7 @@
       conn_name: "{{nm_con_name}}"
       ifname: "{{current_iface['dev']}}"
       type: "{{nm_iface_type}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: manual
       ip4: "{{current_iface_ip}}/{{current_mask}}"
@@ -143,7 +143,7 @@
                     | regex_replace('0/0', '0.0.0.0/0')
                     | regex_replace('default', '0.0.0.0/0') }}"
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'ethernet'
     - current_iface_ip | default() | ansible.netcommon.ipv4
@@ -156,12 +156,12 @@
       type: "{{nm_iface_type}}"
       vlandev: "{{iface_item['dev']}}"
       vlanid: "{{current_net['id']}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: auto
       dhcp_client_id: duid
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'vlan'
     - current_iface_ip | default() | lower == 'dhcp'
@@ -174,12 +174,12 @@
       type: "{{nm_iface_type}}"
       vlandev: "{{iface_item['dev']}}"
       vlanid: "{{current_net['id']}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: manual
       ip4: "{{current_iface_ip}}/{{current_mask}}"
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'vlan'
     - current_iface_ip | default() | ansible.netcommon.ipv4
@@ -194,7 +194,7 @@
       type: "{{nm_iface_type}}"
       vlandev: "{{iface_item['dev']}}"
       vlanid: "{{current_net['id']}}"
-      autoconnect: yes
+      autoconnect: true
       mtu: "{{current_mtu}}"
       method4: manual
       ip4: "{{current_iface_ip}}/{{current_mask}}"
@@ -205,7 +205,7 @@
                     | regex_replace('0/0', '0.0.0.0/0')
                     | regex_replace('default', '0.0.0.0/0') }}"
       state: present
-    become: yes
+    become: true
     when:
     - nm_iface_type == 'vlan'
     - current_iface_ip | default() | ansible.netcommon.ipv4
@@ -222,7 +222,7 @@
         cmd: >
           nmcli --get-values 802-3-ethernet.cloned-mac-address connection show
           {{nm_con_name}}
-      become: yes
+      become: true
       register: mac_addr_rand_reg
       changed_when: false
       failed_when: mac_addr_rand_reg['stdout_lines'][0] | default() != 'random'
@@ -234,7 +234,7 @@
         cmd: >
           nmcli connection modify {{nm_con_name}}
           802-3-ethernet.cloned-mac-address random
-      become: yes
+      become: true
       when: not ansible_check_mode
       notify: restart network
 
@@ -246,7 +246,7 @@
   - name: "Delete any conflicting connections using {{current_iface['dev']}}"
     ansible.builtin.shell:
       cmd: "nmcli connection delete {{con_item}}"
-    become: yes
+    become: true
     loop: "{{con_to_delete_reg['stdout_lines'] | default([]) }}"
     loop_control:
       loop_var: con_item
@@ -258,7 +258,7 @@
       name: systemd-networkd.service
       state: stopped
       enabled: no
-    become: yes
+    become: true
     when: srv_status_var != 'not-found'
     notify: update service facts
     vars:
@@ -276,7 +276,7 @@
   - name: Enable networkd
     ansible.builtin.service:
       name: systemd-networkd
-    become: yes
+    become: true
 
   - name: "Configure {{netdev_var}}"
     ansible.builtin.template:
@@ -285,8 +285,8 @@
       owner: root
       group: root
       mode: 0644
-      backup: yes
-    become: yes
+      backup: true
+    become: true
     when: vlan_item is defined
     notify: restart network
     vars:
@@ -299,8 +299,8 @@
       owner: root
       group: root
       mode: 0644
-      backup: yes
-    become: yes
+      backup: true
+    become: true
     notify: restart network
     vars:
       link_var: "\
@@ -318,8 +318,8 @@
       owner: root
       group: root
       mode: 0644
-      backup: yes
-    become: yes
+      backup: true
+    become: true
     notify: restart network
     vars:
       net_var: "\
@@ -336,7 +336,7 @@
     name: networking.service
     state: stopped
     enabled: no
-  become: yes
+  become: true
   when: srv_status_var != 'not-found'
   notify: update service facts
   vars:

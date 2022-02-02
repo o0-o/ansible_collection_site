@@ -27,7 +27,7 @@ Address={{current_iface_ip}}/{{current_mask}}
 DHCP=ipv4
 {% endif %}
 {% for vlan in current_iface['vlan'] | default([]) %}
-VLAN=vlan{{net[vlan]['id']}}
+VLAN=vlan{{nets[vlan]['id']}}
 {% endfor %}
 {% if current_iface_ip == 'dhcp' %}
 [DHCPv4]

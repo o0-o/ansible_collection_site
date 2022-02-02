@@ -2,9 +2,9 @@
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
 - name: Run platform-specific tasks
-  ansible.builtin.include_tasks: "{{lookup('first_found', tasks_files)}}"
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
   vars:
-    tasks_files:
+    files_var:
       files:
       - misc_"{{ ansible_distribution| lower }}-\
         {{ ansible_distribution_version | lower() }}.yml"

@@ -22,8 +22,8 @@
 
   - name: "Use {{net_item['key']}} as currently configured"
     ansible.builtin.set_fact:
-      update_net: "{{ update_net
-                      | combine({net_item['key']: net[net_item['key']]}) }}"
+      update_nets: "{{  update_nets
+                        | combine({net_item['key']: net[net_item['key']]}) }}"
 
   rescue:
 
@@ -37,7 +37,7 @@
 
   - name: "Assign network ID {{rand_id}} to {{net_item['key']}}"
     ansible.builtin.set_fact:
-      update_net: >
-        {{ update_net | combine({ net_item['key']: net_vals}) }}
+      update_nets: >
+        {{ update_nets | combine({ net_item['key']: net_vals_var}) }}
     vars:
-      net_vals: "{{ net[net_item['key']] | combine({'id': rand_id}) }}"
+      net_vals_var: "{{ net[net_item['key']] | combine({'id': rand_id}) }}"

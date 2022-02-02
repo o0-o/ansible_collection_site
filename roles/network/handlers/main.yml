@@ -3,15 +3,13 @@
 
 - name: save net vars
   ansible.builtin.blockinfile:
-    path: "{{cwd}}/inventory/group_vars\
-      /{{site['name']}}_{{site['etld'] | regex_replace('\\.', '_') }}.yml"
-    marker: "# {mark} ANSIBLE MANAGED BLOCK - Network"
+    path: "{{cwd}}/inventory/group_vars/{{site_group}}.yml"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: Network"
     insertafter: '^site: .*'
     block: |
-
       net:
-        {{ net | to_nice_yaml(width=1023, indent=2) | indent(2) }}
-    backup: yes
+        {{ nets | to_nice_yaml(width=1023, indent=2) | indent(2) | trim }}
+    backup: true
   delegate_to: 127.0.0.1
 
 - name: restart network (openbsd)
@@ -21,7 +19,7 @@
       pfctl -a '*' -F rules &&
       pfctl -f /etc/pf.conf &&
       sh /etc/netstart
-  become: yes
+  become: true
   when: ansible_system | lower == 'openbsd'
   listen: restart network
 

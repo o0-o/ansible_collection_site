@@ -6,23 +6,15 @@ Python interpreter and become method, as well as the interface list.
 #}
 ---
 {{  ( default_comment_header | default()
-      + "
-This inventory file contains Ansible's user, Python interpreter and
-privilege escalation (become) variables as well as interface
-and service definitions for the host. It should be written in yaml
-format and named after the FQDN of the host.
+      + "This inventory file contains Ansible's user, Python interpreter and privilege escalation (become) variables as well as interface and service definitions for the host. It should be written in yaml format and named after the FQDN of the host.
 
 Ex: host.site.example.com.yml
 
-Ansible variables that affect how Ansible interacts with the host are
-defined first. Each of these will be set to a version of the variable
-that is prefixed with 'update_', the current value of the varible or
-an arbitrary default based on the most common values.
+Ansible variables that affect how Ansible interacts with the host are defined first. Each of these will be set to a version of the variable that is prefixed with 'update_', the current value of the varible or an arbitrary default based on the most common values.
 
-This file is generated and updated by various roles in the o0-o.site
-collection. It is acceptable to make manual changes to the values of
-variables defined here; however, any additional variables will not
-persist." )
+This file is generated and updated by various roles in the o0-o.site collection. It is acceptable to make manual changes to the values of variables defined here; however, any additional variables will not persist."
+    )
+    | wordwrap(70)
     | comment(  prefix=yaml_comment_prefix | default(),
                 postfix=default_comment_postfix | default() ) }}
 {#
@@ -133,62 +125,65 @@ ansible_ssh_private_key_file: {{ansible_ssh_private_key_file}}
 # configuration on a host. Only variables that correspond to the host
 # are set here. Most network-related configuration is set in the
 # fqdn.yml file in the inventory/fqdn/group_vars directory.
-iface:
-
-  # - bridge: admin
-  #
-  #   Optionally, configure the interface in a software bridge on a
-  #   given network. The value should correspond to a key in the net
-  #   dictionary. All interfaces with the same name will be bridged
-  #   together with the specified network's VLAN. The bridge interface
-  #   number is determined by the id field in the specified network
-  #   (same as the VLAN VID). So in the exampel of admin above, if
-  #   network admin has an ID of 202, the bridge will be bridge202 and
-  #   will at least include this interface and vlan202.
-  #
-  #   dev: em0
-  #
-  #   The name of the device in the OS. Examples include: em10 ix3 re0.
-  #   Either dev or mac_addr must be defined for any given interface. If
-  #   mac_addr is defined, the net role will determine the device based
-  #   on dmesg and write it here.
-  #
-  #   description: Human-readable name or brief description
-  #
-  #   This can be set in the net dictionary but we can override it for
-  #   a specific physical interface here.
-  #
-  #   mac_addr: 00:00:00:00:00:00
-  #
-  #   The hardware address of the interface. This is used to identify
-  #   the interface via dmesg. It is not applied as a configuration.
-  #   Either mac_addr or dev must be set.
-  #
-  #   net: sales
-  #
-  #   Optionally, set the net variable to assign a network directly to
-  #   the physical interface. This value references the keys in the net
-  #   dictionary defined in fqdn.yml. Addressing, routes, mtu and other
-  #   network configuration are pulled from there. When the host is a
-  #   switch, this indicates the primary (untagged) VLAN.
-  #
-  #   random_mac: true
-  #
-  #   Set this to false to advertise the hardware MAC address on the
-  #   network instead of a randomized one. Some NICs have issues with
-  #   changing their MAC address. The default is true.
-  #
-  #   vlan:
-  #   - admin
-  #   - sales
-  #
-  #   Set a list of vlans to configure on this interface. Names should
-  #   correspond to keys in the net dictionary.
-  {{  update_iface
-      | default(iface)
+#
+#ifaces:
+#
+#   - bridge: admin
+#
+#     Optionally, configure the interface in a software bridge on a
+#     given network. The value should correspond to a key in the net
+#     dictionary. All interfaces with the same name will be bridged
+#     together with the specified network's VLAN. The bridge interface
+#     number is determined by the id field in the specified network
+#     (same as the VLAN VID). So in the exampel of admin above, if
+#     network admin has an ID of 202, the bridge will be bridge202 and
+#     will at least include this interface and vlan202.
+#
+#     dev: em0
+#
+#     The name of the device in the OS. Examples include: em10 ix3 re0.
+#     Either dev or mac_addr must be defined for any given interface. If
+#     mac_addr is defined, the net role will determine the device based
+#     on dmesg and write it here.
+#
+#     description: Human-readable name or brief description
+#
+#     This can be set in the net dictionary but we can override it for
+#     a specific physical interface here.
+#
+#     mac_addr: 00:00:00:00:00:00
+#
+#     The hardware address of the interface. This is used to identify
+#     the interface via dmesg. It is not applied as a configuration.
+#     Either mac_addr or dev must be set.
+#
+#     net: sales
+#
+#     Optionally, set the net variable to assign a network directly to
+#     the physical interface. This value references the keys in the net
+#     dictionary defined in fqdn.yml. Addressing, routes, mtu and other
+#     network configuration are pulled from there. When the host is a
+#     switch, this indicates the primary (untagged) VLAN.
+#
+#     random_mac: true
+#
+#     Set this to false to advertise the hardware MAC address on the
+#     network instead of a randomized one. Some NICs have issues with
+#     changing their MAC address. The default is true.
+#
+#     vlan:
+#     - admin
+#     - sales
+#
+#     Set a list of vlans to configure on this interface. Names should
+#     correspond to keys in the net dictionary.
+ifaces:
+  {{  update_ifaces
+      | default(ifaces)
       | default([])
       | to_nice_yaml(width=1023, indent=2)
-      | indent(2) }}
+      | indent(2)
+      | trim }}
 # NOTE: CARP interfaces are created automatically for each net and vlan
 # configured on an interface. CARP device names and VHIDs correspond to
 # network IDS. If only one address is available (in the case of a public
@@ -200,14 +195,16 @@ iface:
 # networks they should be configured on. Service definitions are defined
 # by the srv_def variable which is set in the all.yml group variables
 # file.
-srv:
-
-  # service:
-  # - net
-  {{  update_srv
-      | default(srv)
+#
+#srvs:
+#   service:
+#   - net
+srvs:
+  {{  update_srvs
+      | default(srvs)
       | default({})
       | to_nice_yaml(width=1023, indent=2)
-      | indent(2) }}
+      | indent(2)
+      | trim }}
 # Service definitions come from /etc/services or may be manually
 # configured in the all.yml inventory file via the srv_def dictionary.

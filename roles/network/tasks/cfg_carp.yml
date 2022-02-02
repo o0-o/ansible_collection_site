@@ -82,9 +82,9 @@
   ansible.builtin.include_tasks: set_ip.yml
 
 - name: "Save {{current_iface['dev']}} configuration to {{inventory_hostname}}"
-  ansible.builtin.include_tasks: "{{lookup('first_found', tasks_files)}}"
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
   vars:
-    tasks_files:
+    files_var:
       files:
       - "save_iface_cfg_{{ ansible_distribution| lower }}-\
         {{ ansible_distribution_version | lower() }}.yml"

@@ -17,7 +17,7 @@
     The configured network for {{current_iface['dev']}} is
     {{ current_iface['net'] | default('undefined') }}
   ansible.builtin.set_fact:
-    current_net: "{{ net[ current_iface['net'] | default() ] | default({}) }}"
+    current_net: "{{ nets[ current_iface['net'] | default() ] | default({}) }}"
 
 - name: >
     The current IP for {{current_iface['dev']}} is

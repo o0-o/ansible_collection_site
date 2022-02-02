@@ -103,7 +103,7 @@
   - name: Test public IPs
     ansible.builtin.shell:
       cmd: "! ping -c 2 {{ip_item}} 1>/dev/null || echo {{ip_item}}"
-    register: public_ips_in_use
+    register: public_ips_in_use_reg
     changed_when: false
     loop: "{{ available_ips | ansible.netcommon.ipaddr('public') }}"
     loop_control:
@@ -112,9 +112,9 @@
   - name: Exclude reachable public IPs from usable pool
     ansible.builtin.set_fact:
       available_ips: "{{  available_ips
-                          | difference( public_ips_in_use['results']
+                          | difference( public_ips_in_use_reg['results']
                                         | map(attribute='stdout') ) }}"
-    when: not public_ips_in_use['skipped']
+    when: not public_ips_in_use_reg['skipped']
 
   - name: >
       Assign {{ip}} to {{current_iface['dev']}} in the

@@ -14,7 +14,7 @@
   ansible.builtin.set_fact:
     vlan_dicts: "{{ vlan_dicts
                     | default([])
-                    + [{  'dev':  'vlan' + net[vlan_net_item]['id'] | string,
+                    + [{  'dev':  'vlan' + nets[vlan_net_item]['id'] | string,
                           'net': vlan_net_item }] }}"
   loop: "{{ current_iface['vlan'] | default([]) }}"
   loop_control:

@@ -46,30 +46,19 @@
   ansible.builtin.package:
     name: "{{ansible_dependencies}}"
     state: present
-  become: yes
-  when: ansible_system != 'Darwin'
+  become: true
+  when: ansible_system | lower != 'darwin'
 
 - name: Install any other Ansible dependencies (macOS)
   community.general.homebrew:
     name: "{{ansible_dependencies}}"
     state: installed
-  when: ansible_system == 'Darwin'
+  when: ansible_system | lower == 'darwin'
 
 - name: Configure SELinux
   ansible.builtin.include_tasks: cfg_selinux.yml
 
-# The precedence is site['tz'], tz (to override), and then GMT.
-# Originally, the idea was to use the timezone of localhost as a
-# default, but the formats used in date_time['tz'] aren't always
-# accepted by the community.general.timezone module.
-- name: Define timezone
-  ansible.builtin.set_fact:
-    site: "{{ site | default({}) | combine({'tz': timezone}) }}"
-  vars:
-    timezone: "{{ site['tz'] | default( tz | default('GMT') ) }}"
-  delegate_to: 127.0.0.1
-
-- name: "Set timezone to {{site['tz']}}"
+- name: "Set timezone to {{site['tz']}} on {{inventory_hostname}}"
   community.general.timezone:
     name: "{{site['tz']}}"
-  become: yes
+  become: true

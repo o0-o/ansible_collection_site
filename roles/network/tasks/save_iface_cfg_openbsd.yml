@@ -12,6 +12,6 @@
     owner: root
     group: wheel
     mode: 0640
-    backup: yes
-  become: yes
+    backup: true
+  become: true
   notify: restart network

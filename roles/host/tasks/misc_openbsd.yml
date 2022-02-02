@@ -5,7 +5,7 @@
 - name: Enable accounting
   ansible.builtin.service:
     name: accounting
-    enabled: yes
+    enabled: true
 
 # Don't plan on using ipv6 at all so disable SLAACD
 - name: Disable slaacd (ipv6)
@@ -20,7 +20,7 @@
   ansible.posix.sysctl:
     name: vm.malloc_conf
     value: SU
-    sysctl_set: yes
+    sysctl_set: true
     state: present
 
 # Reboot on kernel panic instead of dropping to debugger
@@ -28,7 +28,7 @@
   ansible.posix.sysctl:
     name: ddb.panic
     value: 0
-    sysctl_set: yes
+    sysctl_set: true
     state: present
 
 - name: Check if altroot partition exists
@@ -42,6 +42,6 @@
   ansible.builtin.lineinfile:
     path: /etc/daily.local
     line: 'ROOTBACKUP=1'
-    create: yes
-    backup: yes
+    create: true
+    backup: true
   when: altroot_mount_reg['rc'] == 0

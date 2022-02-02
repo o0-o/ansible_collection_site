@@ -1,0 +1,303 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Initialize Site Configuration
+#
+# This role may be interactive the first time it is run. It gathers
+# basic information about the site which cannot be derived or generated
+# and must come from the administrator.
+#
+########################################################################
+
+# Site Name
+- name: Site name
+  block:
+
+  - block:
+
+    - name: "The site name is {{site['name']}}"
+      ansible.builtin.assert:
+        that: site['name'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_name}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site
+                  | default({})
+                  | combine({'name': site_name}) }}"
+
+  rescue:
+
+  - name: Get the site name
+    ansible.builtin.pause:
+      prompt: "Enter an abbreviated name for the site. It must be at least 2 \
+        characters long and can only include lower case letters, numbers \
+        and/or dashes. It must begin with a letter and cannot end with a \
+        dash. \
+        Ex: hq"
+    register: name_reg
+    timeout: 60
+
+  - name: Define the site name
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | default({})
+                | combine({'name': name_reg['user_input']}) }}"
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['name']}} is valid"
+    ansible.builtin.assert:
+      that: site['name'] | regex_search('^[a-z][a-z0-9-]*[a-z0-9]$') != ''
+      quiet: true
+
+# Registered Domain Name
+- name: Registered domain name
+  block:
+
+  - block:
+
+    - name: "The effective top level domain is {{site['etld']}}"
+      ansible.builtin.assert:
+        that: site['etld'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{etld}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'etld': etld}) }}"
+
+  rescue:
+
+  - name: Get the site domain name
+    ansible.builtin.pause:
+      prompt: "Enter the registered public domain name for this site. Ex: \
+        example.com"
+    register: etld_reg
+    timeout: 60
+
+  - name: Define the effective top level domain (eTLD)
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | combine({'etld': etld_reg['user_input']}) }}"
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['etld']}} is valid"
+    ansible.builtin.assert:
+      that: site['etld'] | regex_search('^[a-z][a-z0-9.-]*[a-z0-9]$') != ''
+      quiet: true
+
+# These variables are redundant and not strictly necessary, but they are
+# available as a convenience.
+
+- name: "The site URI is {{site_uri_var}}"
+  ansible.builtin.set_fact:
+    site_uri: "{{site_uri_var}}"
+  vars:
+    site_uri_var: "{{site['name']}}.{{site['etld']}}"
+
+- name: "The site group is {{site_group_var}}"
+  ansible.builtin.set_fact:
+    site_group: "{{site_group_var}}"
+  vars:
+    site_group_var: "{{ site_uri | regex_replace('\\.', '_') }}"
+
+- name: "If {{site_uri}} already exists, load it"
+  ansible.builtin.set_fact:
+    site: "{{ vars[site_group] | default(site) }}"
+
+# Site ID Number
+- name: Site ID
+  block:
+
+  - block:
+
+    - name: "The site ID is {{site['id']}}"
+      ansible.builtin.assert:
+        that: site['id'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_id}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'id': site_id}) }}"
+
+  rescue:
+
+  # Idempotence here depends on sites being created in order. For
+  # instance, if we create 3 sites and tear them down, the site IDs will
+  # be generated identically, but only if we create those sites in the
+  # same order. However if we create sites 1, 2 and then 3, we cannot
+  # delete site 2 and then wish to regenerate it with the same ID unless
+  # we also delete site 3. In production, this should not be an issue
+  # since site deletion/recreation should not happen, and even if it is
+  # necessary, the site ID can simply be set manually in the group
+  # variables file. Idempotence is included here simply as a best
+  # practice and for test cases where entire environments may need to be
+  # built and rebuilt.
+
+  - name: Build site ID list
+    ansible.builtin.set_fact:
+      site_ids: "{{ site_ids | default([]) + [vars[group_item]['id']] }}"
+    when: vars[group_item]['id'] is defined
+    loop: "{{group_names}}"
+    loop_control:
+      loop_var: group_item
+
+  - name: Generate random site ID
+    ansible.builtin.set_fact:
+      site: "{{ site
+                | combine({ 'id': range(0, 256)
+                                  | list
+                                  | difference( site_ids | default([]) )
+                                  | random(seed=site_uri) }) }}"
+
+  always:
+
+  - name: "{{site['id']}} is valid"
+    ansible.builtin.assert:
+      that: site['id'] | int in range(0,256)
+      quiet: true
+
+- block:
+
+  - name: "Site was created {{fts_var}}"
+    ansible.builtin.assert:
+      that: site['created'] is defined
+      quiet: true
+    vars:
+      fts_var: "{{  'on %Y/%m/%d at %H:%M:%S GMT'
+                    | strftime(site['created']) }}"
+
+  rescue:
+
+  # ansible_date_time isn't available until ansible.builtin.setup is run
+  - name: Define current timestamp
+    ansible.builtin.shell:
+      cmd: date '+%s'
+    changed_when: false
+    register: timestamp_reg
+    delegate_to: 127.0.0.1
+
+  - name: "{{site_uri}} was created {{fts_var}}"
+    ansible.builtin.set_fact:
+      site: "{{ site | combine({'created': ts_var}) }}"
+    changed_when: true
+    vars:
+      ts_var: "{{timestamp_reg['stdout_lines'][0]}}"
+      fts_var: "{{  'on %Y/%m/%d at %H:%M:%S GMT'
+                    | strftime(timestamp_reg['stdout_lines'][0]) }}"
+    notify: save site vars
+
+# Description
+- name: Site description
+  block:
+
+  - block:
+
+    - name: "The site description is {{site['description']}}"
+      ansible.builtin.assert:
+        that: site['description'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_description}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'description': site_description}) }}"
+
+  rescue:
+
+  - name: Get the site description
+    ansible.builtin.pause:
+      prompt: "Enter a brief description of the site. Ex: Headquarters"
+    register: descr_reg
+    timeout: 60
+
+  - name: Define the site description
+    ansible.builtin.set_fact:
+      site: "{{ site | combine({'description': descr_reg['user_input']}) }}"
+    changed_when: true
+    notify: save site vars
+
+  always:
+
+  - name: "{{site['description']}} is valid"
+    ansible.builtin.assert:
+      that: site['description'] | regex_search('^[\w\s\.()&/+]$') != ''
+      quiet: true
+
+# Timezone
+- name: Time Zone
+  block:
+
+  - block:
+
+    - name: "The timezone for {{site_uri}} is {{site['tz']}}"
+      ansible.builtin.assert:
+        that: site['tz'] is defined
+        quiet: true
+
+    rescue:
+
+    - name: "{{site_tz}} provided"
+      ansible.builtin.set_fact:
+        site: "{{ site | combine({'tz': site_tz}) }}"
+
+  rescue:
+
+  # If no timezone is configured for the site. Attempt to use the
+  # timezone of localhost. Unfortunately, Ansible facts seem to get the
+  # timezone from the date command which will return something like EST
+  # instead of US/Eastern which is what is needed to use the
+  # community.general.timezone module.
+
+  - name: Get list of valid timezones from localhost
+    ansible.builtin.find:
+      paths: /usr/share/zoneinfo
+      file_type: file
+      excludes: posix*
+      recurse: true
+      depth: 2
+      get_checksum: true
+    register: valid_tz_reg
+    delegate_to: 127.0.0.1
+
+  - name: Examine /etc/localtime on localhost
+    ansible.builtin.stat:
+      path: /etc/localtime
+    register: lt_reg
+    delegate_to: 127.0.0.1
+
+  # /etc/localtime may either be a link or a file. If it is a link, use
+  # the link source to determine the timezone. If it isn't a link
+  # (FreeBSD), then use the first checksum match in /usr/share/zoneinfo.
+  # Additionally, not all systems support UTC/UCT as a timezone since it is
+  # technically a standard and the associated timezone is GMT. Any
+  # instance of UTC/UCT is converted to GMT. Failing all of that, use
+  # Etc/GMT.
+  - name: "Set the timezone for {{site_uri}} to {{tz_var}}"
+    ansible.builtin.set_fact:
+      site: "{{ site | combine({'tz': tz_var}) }}"
+    vars:
+      tz_var: "{{ lt_reg['stat']['lnk_source']
+                  | default(  valid_tz_reg['files']
+                              | selectattr( 'checksum',
+                                            '==',
+                                            lt_reg['stat']['checksum']
+                                            | default('0') )
+                              | map(attribute='path')
+                              | default([''], true)
+                              | first )
+                  | regex_replace('^.*zoneinfo/', '')
+                  | regex_replace('UTC|UCT', 'GMT')
+                  | default('Etc/GMT', true) }}"

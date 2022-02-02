@@ -20,7 +20,7 @@
               ansible.builtin.raw: >
                 {{ ansible_become_method | default('') }} pacman --sync
                 --refresh --refresh
-              ignore_errors: yes
+              ignore_errors: true
               when: not ansible_check_mode
 
             # Attempt to install python3 even if cache update fails
@@ -39,7 +39,7 @@
             - name: Update package cache (apt)
               ansible.builtin.raw: >
                 {{ ansible_become_method | default('') }} apt-get update
-              ignore_errors: yes
+              ignore_errors: true
               when: not ansible_check_mode
 
             # Attempt to install python3 even if cache update fails
@@ -60,7 +60,7 @@
             ansible.builtin.raw: dnf check-update
             register: dnf_cache_update_reg
             failed_when: dnf_cache_update_reg['rc'] not in [0, 100]
-            ignore_errors: yes
+            ignore_errors: true
             when: not ansible_check_mode
 
           # Attempt to install python3 even if cache update fails
@@ -81,7 +81,7 @@
           ansible.builtin.raw: yum check-update
           register: yum_cache_update_reg
           failed_when: yum_cache_update_reg['rc'] not in [ 0,100 ]
-          ignore_errors: yes
+          ignore_errors: true
           when: not ansible_check_mode
 
         # Attempt to install python even if cache update fails
@@ -97,11 +97,12 @@
       - name: The operating system is FreeBSD
         ansible.builtin.assert:
           that: uname_reg['stdout_lines'][0] | lower != 'freebsd'
+          quiet: true
 
       - name: Update package cache (FreeBSD)
         ansible.builtin.raw: >
           {{ ansible_become_method | default('') }} pkg update -f
-        ignore_errors: yes
+        ignore_errors: true
         when: not ansible_check_mode
 
       - name: Install python3 package (FreeBSD)
@@ -114,6 +115,7 @@
     - name: The operating system is OpenBSD
       ansible.builtin.assert:
         that: uname_reg['stdout_lines'][0] | lower != 'openbsd'
+        quiet: true
 
     - name: Install python3 package (OpenBSD)
       ansible.builtin.raw: >
@@ -125,6 +127,7 @@
   - name: The operating system is OpenBSD
     ansible.builtin.assert:
       that: uname_reg['stdout_lines'][0] | lower != 'darwin'
+      quiet: true
 
   - name: Install Homebrew and Python 3
     community.general.homebrew:
@@ -132,5 +135,6 @@
       - python3
       state: installed
 
+# Recursion
 - name: Configure Python interpreter
   ansible.builtin.include_tasks: cfg_python.yml

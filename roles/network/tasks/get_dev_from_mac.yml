@@ -20,11 +20,11 @@
         grep -i ' {{iface_item['mac_addr']}}$' |
         grep -q '{{iface_item['dev']}}'
     changed_when: false
-    become: yes
+    become: true
 
   - name: "Add {{iface_item['dev']}} to udpated interface list"
     ansible.builtin.set_fact:
-      update_iface: "{{ update_iface | union([iface_item]) }}"
+      update_ifaces: "{{ update_ifaces | union([iface_item]) }}"
 
   rescue:
 
@@ -42,12 +42,12 @@
         done
     register: match_mac_dev
     changed_when: true
-    become: yes
+    become: true
 
   - name: "Match {{iface_item['mac_addr']}} to {{dev_var}}"
     set_fact:
-      update_iface: >
-        {{  update_iface
+      update_ifaces: >
+        {{  update_ifaces
             | union([ iface_item | combine({'dev': dev_var}) ]) }}
     changed_when: true
     vars:
