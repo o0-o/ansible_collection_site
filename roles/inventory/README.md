@@ -21,8 +21,8 @@ The site variables include:
 Variable | Description
 ---|---
 site_name | An abbreviated name for the site. It must be at least 2 characters long and can only include lower case letters, numbers and/or dashes. It must begin with a letter and cannot end with a dash.
-site_description | A brief description of the site
 etld | The registered domain name of the site, also know as the [**e**ffective **T**op **L**evel **D**omain](https://en.wikipedia.org/wiki/Public_Suffix_List).
+site_description | A brief description of the site
 site_id | The site ID must be a positive integer between 0-255, and it must be unique to the site. It will correspond to the 2nd octet in all local IPv4 addresses for the site. This not only allows us to easily distinguish addresses across sites, but also allows for inter-site routing without risk of address collisions. If an ID isn't provided, one will be randomly assigned.
 site_tz | The timezone of the site. If none is provided, an attempt is made to use the timezone configured on localhost. If that fails for some reason, `Etc/GMT` is used.
 
@@ -54,7 +54,7 @@ all:
 #### `./inventory/group_vars/all.yml`
 
 ```yaml
-# BEGIN ANSIBLE MANAGED BLOCK - Site: hq.example.xom
+# BEGIN ANSIBLE MANAGED BLOCK: Site: hq.example.xom
 hq_example_com:
   created: '1642392591'
   description: Example Corp Headquarters
@@ -62,7 +62,7 @@ hq_example_com:
   id: 123
   name: hq
   tz: Etc/GMT
-# END ANSIBLE MANAGED BLOCK - Site: hq.example.xom
+# END ANSIBLE MANAGED BLOCK: Site: hq.example.xom
 ```
 
 #### `./inventory/group_vars/hq_example_com.yml`
