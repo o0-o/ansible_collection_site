@@ -4,7 +4,7 @@ Creates inventory directories and files for the [o0_o.site Ansible collection](h
 
 ## Requirements
 
-* [`jc`](https://pypi.org/project/jc/) Python Package installed on localhost*
+* [`jc`](https://pypi.org/project/jc/) Python package installed on localhost*
 
 \* If multiple versions of Python are installed, ensure to install with the instance of `pip` associated with the version of Python used by Ansible.
 
@@ -32,7 +32,7 @@ If any of these 4 variables are not provided, Ansible will prompt for them (with
 
 Example:
 
-```
+```yaml
 site_name: hq
 site_description: Example Corp Headquarters
 etld: example.com
@@ -44,7 +44,7 @@ Based on the example above, this role would produce blocks or lines in the follo
 
 #### `./inventory/hq.example.com.yml`
 
-```
+```yaml
 all:
   children:
     hq_example_com:
@@ -54,7 +54,7 @@ all:
 #### `./inventory/group_vars/all.yml`
 
 ```yaml
-# BEGIN Ansible Block - Site: hq.example.xom
+# BEGIN ANSIBLE MANAGED BLOCK - Site: hq.example.xom
 hq_example_com:
   created: '1642392591'
   description: Example Corp Headquarters
@@ -62,7 +62,7 @@ hq_example_com:
   id: 123
   name: hq
   tz: Etc/GMT
-# END Ansible Block - Site: hq.example.xom
+# END ANSIBLE MANAGED BLOCK - Site: hq.example.xom
 ```
 
 #### `./inventory/group_vars/hq_example_com.yml`
@@ -102,13 +102,13 @@ Define services here. The IANA service definitions tend to assign both UDP and T
 
 Default:
 
-```
+```yaml
 srv_defs: {}
 ```
 
 Example:
 
-```
+```yaml
 srv_defs:
   dns:
     udp:
@@ -124,7 +124,8 @@ srv_defs:
 Default service definitions are derived from the [IANA Service Name and Transport Protocol Port Number Registery](https://www.iana.org/assignments/service-names-port-numbers). This is preferable over `/etc/services` because `/etc/services` can be inconsistent between operating systems and is difficult to parse. If a service definition isn't available in the `srv_defs` dictionary, it falls back to `iana_srv_defs`. `iana_srv_defs` is defined in an Ansible-managed bblock which can be updated by running `tasks/conv_iana-srv-def_to_yaml.yml`, but doing so should not be necessary as the service definitions change infrequently. The values provided by default in this role will be updated on every major release. Note that converting the IANA service defintions to yaml can take several hours so while `tasks/conv_iana-srv-def_to_yaml.yml` is available to run manually, it is never run by the role's `tasks/main.yml`.
 
 Defaults (see `defaults/main.yml`):
-```
+
+```yaml
 iana_srv_defs:
   1ci-smcs:
     tcp:
