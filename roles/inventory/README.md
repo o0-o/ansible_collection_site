@@ -56,7 +56,7 @@ all:
 #### `./inventory/group_vars/all.yml`
 
 ```yaml
-# BEGIN ANSIBLE MANAGED BLOCK: Site: hq.example.xom
+# BEGIN ANSIBLE MANAGED BLOCK: Site - hq.example.xom
 hq_example_com:
   created: '1642392591'
   description: Example Corp Headquarters
@@ -64,7 +64,7 @@ hq_example_com:
   id: 123
   name: hq
   tz: Etc/GMT
-# END ANSIBLE MANAGED BLOCK: Site: hq.example.xom
+# END ANSIBLE MANAGED BLOCK: Site - hq.example.xom
 ```
 
 #### `./inventory/group_vars/hq_example_com.yml`
