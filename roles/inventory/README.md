@@ -4,9 +4,11 @@ Creates inventory directories and files for the [o0_o.site Ansible collection](h
 
 ## Requirements
 
-* [`jc`](https://pypi.org/project/jc/) Python package installed on localhost*
+* [`jc`](https://pypi.org/project/jc/) Python package installed on localhost* **
 
 \* If multiple versions of Python are installed, ensure to install with the instance of `pip` associated with the version of Python used by Ansible.
+
+\** This is only required when running the `conv_iana-srv-def_to_yaml.yml` task which can only be invoked manually and is completely optional. For most cases, this requirement can be ignored.
 
 ## Role Variables
 
@@ -68,7 +70,7 @@ hq_example_com:
 #### `./inventory/group_vars/hq_example_com.yml`
 
 ```yaml
-site: hq_example_com
+site: "{{ hq_example_com | default({}) }}"
 ```
 
 ### Comment Formatting
@@ -121,7 +123,7 @@ srv_defs:
 
 ### IANA Service Definitions
 
-Default service definitions are derived from the [IANA Service Name and Transport Protocol Port Number Registery](https://www.iana.org/assignments/service-names-port-numbers). This is preferable over `/etc/services` because `/etc/services` can be inconsistent between operating systems and is difficult to parse. If a service definition isn't available in the `srv_defs` dictionary, it falls back to `iana_srv_defs`. `iana_srv_defs` is defined in an Ansible-managed bblock which can be updated by running `tasks/conv_iana-srv-def_to_yaml.yml`, but doing so should not be necessary as the service definitions change infrequently. The values provided by default in this role will be updated on every major release. Note that converting the IANA service defintions to yaml can take several hours so while `tasks/conv_iana-srv-def_to_yaml.yml` is available to run manually, it is never run by the role's `tasks/main.yml`.
+Default service definitions are derived from the [IANA Service Name and Transport Protocol Port Number Registery](https://www.iana.org/assignments/service-names-port-numbers). This is preferable over `/etc/services` because `/etc/services` can be inconsistent between operating systems and is difficult to parse. If a service definition isn't available in the `srv_defs` dictionary, it falls back to `iana_srv_defs`. `iana_srv_defs` is defined in an Ansible-managed block which can be updated by running `tasks/conv_iana-srv-def_to_yaml.yml`, but doing so should not be necessary as the service definitions change infrequently. The values provided by default in this role will be updated on every major release. Note that converting the IANA service defintions to yaml can take several hours so while `tasks/conv_iana-srv-def_to_yaml.yml` is available to run manually, it is never run by the role's `tasks/main.yml`.
 
 Defaults (see `defaults/main.yml`):
 
@@ -148,7 +150,7 @@ When creating a new site, it's necessary to provide site parameters to the role.
 
 ```yaml
 - roles:
-  - { role: o0_o.site.inventory, site_name: hq, site_description: Headquarters, etld: example.com }
+  - { role: o0_o.site.inventory, site_name: hq, etld: example.com, site_description: Headquarters }
 ```
 
 However, since the parameters are only necessary once, it makes more sense to use the `--extra-vars` flag:
@@ -162,7 +164,7 @@ If a parameter is missing, the role will prompt for it.
 ```console
 > ansible-playbook play.yml
 ...
-Enter a brief description of the site. Ex: Headquarters:
+Enter an abbreviated name for the site. It must be at least 2 characters long and can only include lower case letters, numbers and/or dashes. It must begin with a letter and cannot end with a dash. Ex: hq:
 
 ```
 
