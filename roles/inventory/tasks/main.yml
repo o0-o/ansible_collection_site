@@ -76,6 +76,7 @@
       {{ site_uri | regex_replace('\.', '_') }}:
         {{ site | to_nice_yaml(width=1023, indent=2) | indent(2) }}
     backup: true
+  delegate_to: 127.0.0.1
   vars:
     gv_all_var: "{{cwd}}/inventory/group_vars/all.yml"
 

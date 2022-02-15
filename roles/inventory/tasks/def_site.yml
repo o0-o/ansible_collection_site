@@ -35,8 +35,7 @@
       prompt: "Enter an abbreviated name for the site. It must be at least 2 \
         characters long and can only include lower case letters, numbers \
         and/or dashes. It must begin with a letter and cannot end with a \
-        dash. \
-        Ex: hq"
+        dash. Ex: hq"
     register: name_reg
     timeout: 60
 
