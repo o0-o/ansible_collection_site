@@ -1,0 +1,88 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Convert the IANA Service Name and Transport Protocol Port Number
+# Registry to YAML and save in /defaults/main.yml
+#
+# It shouldn't be necessary to run this as IANA service definitions
+# don't change often. It is provided here out of transparency to show
+# how we convert the IANA registry to the iana_srv_defs dictionary. It
+# will be updated on every major release.
+#
+# This can take several hours to run.
+#
+########################################################################
+
+# Use csv because xml version doesn't convert well with jc
+- name: Download service definitions CSV from the IANA website
+  ansible.builtin.uri:
+    url: "https://www.iana.org\
+      /assignments\
+      /service-names-port-numbers\
+      /service-names-port-numbers.csv"
+    return_content: yes
+  register: iana_srv_def_csv_reg
+
+# This takes a long time and may appear to hang for extended periods but
+# should eventually succeed (ran overnight on a 2018 Macbook Air).
+- name: Convert IANA
+  ansible.builtin.set_fact:
+    iana_srv_def: >
+      {{  iana_srv_def
+          | default({})
+          | combine(  { srv_item[srv_key_var]:
+                          iana_srv_def[ srv_item[srv_key_var] ]
+                          | default({})
+                          | combine(  { srv_item[proto_key_var]:
+                                          iana_srv_def[
+                                              srv_item[srv_key_var]
+                                            ][
+                                              srv_item[proto_key_var]
+                                            ]
+                                          | default([])
+                                          | union(  range( srv_item[
+                                                              port_key_var
+                                                            ]
+                                                          | split('-')
+                                                          | first
+                                                          | int,
+                                                          srv_item[
+                                                              port_key_var
+                                                            ]
+                                                          | split('-')
+                                                          | last
+                                                          | int
+                                                          + 1 )
+                                                    | list )
+                                      } )
+                      } ) }}
+  loop: "{{ iana_srv_def_csv_reg['content']
+            | community.general.jc('csv')
+            | rejectattr(srv_key_var, '==', '')
+            | rejectattr(srv_key_var, 'in', 'copy')
+            | rejectattr(proto_key_var, '==', '')
+            | selectattr(proto_key_var, 'in', ports_var)
+            | rejectattr(port_key_var, '==', '') }}"
+  loop_control:
+    loop_var: srv_item
+  vars:
+    srv_key_var: Service Name
+    proto_key_var: Transport Protocol
+    port_key_var: Port Number
+    ports_var: ['tcp', 'udp', 'sctp', 'dccp']
+# NOTE: The copy protocol is skipped because copy is reserved and cannot
+# be a key.
+
+- name: Save IANA service definitions to defaults/main.yml
+  ansible.builtin.blockinfile:
+    marker: '# {mark} ANSIBLE MANAGED BLOCK: IANA Service Definitions'
+    block: |
+      # To update, run tasks/conv_iana-srv-defs_to_yaml.yml
+      # Converted to YAML on {{ansible_date_time['date']}}
+      iana_srv_defs:
+        {{  iana_srv_def
+            | to_nice_yaml(width=1023, indent=2)
+            | indent(2) }}
+    dest: "{{role_path}}/defaults/main.yml"
+    backup: yes
+  delegate_to: 127.0.0.1
