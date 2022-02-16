@@ -121,6 +121,12 @@ ansible_ssh_private_key_file: {{ansible_ssh_private_key_file}}
 #ansible_ssh_private_key_file:
 {% endif %}
 
+# Unfortunately, it can be difficult to determine the availability of
+# SELinux from host variables gathered by Ansible. The host role
+# determines selinux availability and the resulting boolean is stored
+# here. Default is false.
+selinux_available: {{ selinux_available | default(false) }}
+
 # The iface variable is a list of dictionaries that define interface
 # configuration on a host. Only variables that correspond to the host
 # are set here. Most network-related configuration is set in the
