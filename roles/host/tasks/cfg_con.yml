@@ -36,7 +36,9 @@
       cmd: "ping -c 2 {{host_addr}}"
     changed_when: false
     delegate_to: 127.0.0.1
-    when: ansible_host | default(inventory_hostname) != 'localhost'
+    when:
+    - ansible_host | default(inventory_hostname) != 'localhost'
+    - host_addr != '127.0.0.1'
 
   # Must quote 'true' with raw module
   - name: >
@@ -111,7 +113,7 @@
                         | split(' ')
                         | last }}"
       ssh_key_var: "{{  vagrant_ssh_cfg_reg['stdout']
-                       | regex_search('IdentityFile .*$', multiline=true)
+                        | regex_search('IdentityFile .*$', multiline=true)
                         | split(' ')
                         | last }}"
     notify: save host vars

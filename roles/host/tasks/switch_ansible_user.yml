@@ -1,0 +1,29 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Switch to the new Ansible user and disable ssh login for root.
+#
+########################################################################
+
+- name: "{{new_ansible_user}} can connect to the host"
+  ansible.builtin.ping:
+  vars:
+    ansible_user: "{{new_ansible_user}}"
+
+- name: "{{new_ansible_user}} can use {{ansible_become_method}}"
+  ansible.builtin.shell:
+    cmd: true
+  changed_when: false
+  become: true
+  vars:
+    ansible_user: "{{new_ansible_user}}"
+
+- name: "Store old Ansible user before updating to {{new_ansible_user}}"
+  ansible.builtin.set_fact:
+    old_ansible_user: "{{ansible_user}}"
+
+- name: Ansible user
+  ansible.builtin.set_fact:
+    ansible_user: "{{new_ansible_user}}"
+  changed_when: old_ansible_user != new_ansible_user
+  notify: save host vars

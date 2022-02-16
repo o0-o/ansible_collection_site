@@ -1,0 +1,94 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure the become method and grant ansible user administrative
+# privileges
+#
+########################################################################
+
+- name: "Grant passwordless doas to user {{adm_user_var}}"
+  ansible.builtin.lineinfile:
+    path: "{{doas_cfg_path}}/{{doas_cfg_file}}"
+    line: "permit nopass {{new_ansible_user}}"
+    state: present
+    mode: "{{doas_cfg_mode}}"
+    create: true
+    backup: true
+    validate: "{{doas_bin}} -C %s"
+  become: true
+  when: ansible_become_method == 'doas'
+
+- name: Add ansible user to ancillary administrator groups (if any exist)
+  ansible.builtin.user:
+    name: "{{adm_user_var}}"
+    groups: "{{adm_groups}}"
+    append: true
+  register: adm_group_add_reg
+  become: true
+  when: adm_groups is defined
+
+- name: Set user context (SELinux)
+  community.general.selogin:
+    login: "{{adm_user_var}}"
+    seuser: "{{adm_seuser}}"
+    state: present
+  register: user_selinux_context_reg
+  become: true
+  when: selinux_available | default(false)
+  notify: restore selinux contexts
+
+- name: "Configure sudo for {{adm_user_var}}"
+  block:
+
+  - name: Create sudoers.d subdirectory
+    ansible.builtin.file:
+      path: "{{sudo_cfg_path}}/{{sudo_cfg_subdir}}"
+      state: directory
+      mode: "{{sudo_cfg_subdir_mode}}"
+    become: true
+
+  - name: Include sudoers.d directory in sudoers
+    ansible.builtin.lineinfile:
+      path: "{{sudo_cfg_path}}/{{sudo_cfg_file}}"
+      line: "{{sudo_cfg_include}} {{sudo_cfg_path}}/{{sudo_cfg_subdir}}"
+      state: present
+      backup: true
+      validate: "{{visudo_bin}} -cf %s"
+    become: true
+
+  - name: "Grant {{adm_user_var}} passwordless sudo"
+    ansible.builtin.lineinfile:
+      path: "{{sudo_cfg_path}}/{{sudo_cfg_subdir}}/{{adm_user_var}}"
+      regexp: "^{{adm_user_var}} "
+      line: "{{adm_user_var}} {{sudo_grant_passwordless_admin}}"
+      state: present
+      mode: "{{sudo_cfg_subdir_file_mode}}"
+      create: true
+      validate: "{{visudo_bin}} -cf %s"
+    become: true
+
+  when: ansible_become_method == 'sudo'
+
+- name: "{{ansible_become_method}} is valid for user {{adm_user_var}}"
+  ansible.builtin.shell:
+    cmd: "{{ansible_become_method}} true"
+  failed_when: ansible_become_method not in ['doas', 'sudo']
+  changed_when: false
+  become: true
+  become_method: su
+  become_user: "{{adm_user_var}}"
+
+# The meta module's reset_connection does not support when conditional
+- block:
+
+  - name: Ansible user was not changed
+    ansible.builtin.assert:
+      that:
+      - not adm_group_add_reg['changed']
+      - not user_selinux_context_reg['changed']
+      quiet: true
+
+  rescue:
+
+  - name: Reset connection to host
+    ansible.builtin.meta: reset_connection

@@ -1,5 +1,32 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
+# Don't use root user for Ansible by default. If current Ansible user is
+# root, generate a randomized admin user.
+use_root_user: false
+
 # Dependencies are defined per platform in vars/
 ansible_dependencies: []
+
+# doas
+doas_cfg_path: /etc
+doas_cfg_file: doas.conf
+doas_cfg_mode: 0600
+doas_bin: /usr/bin/doas
+
+# sudo
+sudo_cfg_path: /etc
+sudo_cfg_file: sudoers
+sudo_cfg_subdir: sudoers.d
+sudo_cfg_subdir_mode: 0750
+sudo_cfg_subdir_file_mode: 0440
+sudo_cfg_include: '#includedir'
+sudo_bin: /usr/bin/sudo
+visudo_bin: /usr/sbin/visudo
+sudo_grant_passwordless_admin: 'ALL=(ALL) NOPASSWD: ALL'
+
+# admin user
+adm_seuser: staff_u
+
+#selinux
+selinux_available: false

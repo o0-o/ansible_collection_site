@@ -36,7 +36,7 @@
     cmd: 'grep "[[:space:]]/altroot[[:space:]]*ffs[[:space:]]*xx" /etc/fstab'
   register: altroot_mount_reg
   changed_when: false
-  failed_when: altroot_mount_reg['rc'] not in [ 0,1 ]
+  failed_when: altroot_mount_reg['rc'] not in [0, 1]
 
 - name: Configure daily root backup if altroot mount is configured
   ansible.builtin.lineinfile:

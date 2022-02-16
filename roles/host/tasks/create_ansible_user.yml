@@ -1,0 +1,92 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Create a randomized administrator user for Ansible
+#
+########################################################################
+
+# This is the easiest way to only retrieve hardware NICs and no virtual
+# interfaces or spoofed MAC addresses.
+- name: Run dmesg to retrieve hardware addresses of network interfaces
+  ansible.builtin.shell:
+    cmd: dmesg
+  regiser: dmesg_reg
+  become: true
+
+# Use hardware vendor, operating system and network interfaces as a
+# seed to generate randomized but idempotent user suffix.
+- name: Generate seed for randomized Ansible user name suffix
+  ansible.builtin.set_fact:
+    host_seed: >
+      {{  ansible_system_vendor
+          + ' '
+          + ansible_distribution
+          + ' '
+          + dmesg_reg['stdout']
+            | regex_findall('(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}')
+            | unique
+            | map('lower')
+            | map('replace', '-', ':')
+            | difference(['ff:ff:ff:ff:ff:ff'])
+            | join(' ') }}
+
+- name: "Generate randomized Ansible user name adm_{{user_suffix_var}}"
+  ansible.builtin.set_fact:
+    new_ansible_user: "adm_{{user_suffix_var}}"
+  vars:
+    user_suffix_var: "\
+      {{lookup( 'password',
+                '/dev/null chars=ascii_lowercase,digits length=4',
+                seed=host_seed )}}"
+
+# Adding the user is platform-specific
+- name: Create new Ansible user
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "create_user_{{ ansible_system | lower }}.yml"
+      - create_user_default.yml
+      paths:
+      - tasks/
+    new_user_var: "{{new_ansible_user}}"
+
+- name: "Determine which SSH key to use for {{new_ansible_user}}"
+  block:
+
+  # Replicate ssh-copy-id behavior using most recent key first
+  - name: Get public SSH key from localhost
+    ansible.builtin.shell:
+      cmd: ls -t ~/.ssh/*.pub
+    register: ssh_pub_key_reg
+    delegate_to: 127.0.0.1
+
+  - name: "Use {{pub_key_file_var}} to authenticate as {{new_ansible_user}}"
+    ansible.posix.authorized_key:
+      user: "{{new_ansible_user}}"
+      key: "{{lookup('file', pub_key_file_var)}}"
+      state: present
+    vars:
+      pub_key_file_var: "{{ssh_pub_key_reg['stdout_lines'][0]}}"
+
+  when: ansible_ssh_private_key_file is undefined
+
+- name: >
+    Use {{ansible_ssh_private_key_file}} to authenticate as
+    {{new_ansible_user}}
+  block:
+
+  - name: "Get public SSH key from {{ansible_ssh_private_key_file}}"
+    ansible.builtin.shell:
+      cmd: "ssh-keygen -y -f {{ansible_ssh_private_key_file}}"
+    register: ssh_pub_key_reg
+
+  - name: "Install public SSH key on host"
+    ansible.posix.authorized_key:
+      user: "{{new_ansible_user}}"
+      key: "{{ssh_pub_key_reg['stdout_lines'][0]}}"
+      state: present
+
+  when: ansible_ssh_private_key_file is defined
+
+# Disable ssh root login later in during SSH server configuration

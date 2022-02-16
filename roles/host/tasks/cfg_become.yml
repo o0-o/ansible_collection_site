@@ -8,22 +8,27 @@
 #
 ########################################################################
 
-- block:
+- name: Determine the become method (privilege escalation)
+  block:
 
-  - name: Privilege escalation (become method) is already configured
-    block:
+  - block:
 
-    - name: "{{ansible_become_method}} is configured and valid"
-      ansible.builtin.raw: "{{ansible_become_method}} true"
-      failed_when: ansible_become_method not in ['doas', 'sudo']
-      changed_when: false
+    - name: "{{ansible_become_method}} is already configured"
+      ansible.builtin.assert:
+        that: ansible_become_method is in ['doas', 'sudo']
+        quiet: true
 
     rescue:
 
     # Prefer doas if it is available
+    - name: doas is available
+      ansible.builtin.raw: which doas || command -v doas
+      changed_when: false
+
     - name: Test doas
       ansible.builtin.raw: doas true
       changed_when: false
+      when: ansible_user != 'root'
 
     - name: Use doas for privilege escalation
       ansible.builtin.set_fact:
@@ -33,12 +38,33 @@
 
   rescue:
 
-  - name: Test sudo
-    ansible.builtin.raw: sudo true
-    changed_when: false
-
+  # Fall back to sudo if doas is not already installed
   - name: Use sudo for privilege escalation
     ansible.builtin.set_fact:
       ansible_become_method: sudo
     changed_when: true
     notify: save host vars
+
+- block:
+
+  # Don't explicitly install the become method if it is already
+  # available. In OpenBSD for instance, doas is part of the core
+  # operating system and so trying to install a doas package would fail
+  # even though doas is available.
+  - name: "{{ansible_become_method}} is available"
+    ansible.builtin.raw: >
+        which {{ansible_become_method}} ||
+        command -v {{ansible_become_method}}
+    changed_when: false
+
+  rescue:
+
+  - name: If Ansible user is root, it can install the become method
+    ansible.builtin.assert:
+      that: ansible_user == 'root'
+      quiet: true
+
+  - name: "Mark {{ansible_become_method}} package for installation"
+    ansible.builtin.set_fact:
+      ansible_dependencies: >
+        "{{ ansible_dependencies + [ansible_become_method] }}"

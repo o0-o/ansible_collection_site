@@ -5,135 +5,158 @@
 #
 ########################################################################
 
-- block:
-  - block:
-    - block:
-      - block:
-        - block:
-          - block:
+- name: Install Python on Linux
+  block:
 
-            - name: The package manager is pacman
-              ansible.builtin.raw: which pacman || command -v pacman
-              changed_when: false
+  - name: Discover the package manager
+    ansible.builtin.raw: >
+      which {{pkg_mgr_item}} || command -v {{pkg_mgr_item}}
+    changed_when: false
+    failed_when: false
+    register: pkg_mgr_reg
+    loop:
+    - pacman
+    - apt-get
+    - dnf
+    - yum
+    loop_control:
+      loop_var: pkg_mgr_item
 
-            - name: Update package cache (pacman)
-              ansible.builtin.raw: >
-                {{ ansible_become_method | default('') }} pacman --sync
-                --refresh --refresh
-              ignore_errors: true
-              when: not ansible_check_mode
+  - name: "Use {{pkg_mgr_var}} to install Python"
+    ansible.builtin.set_fact:
+      pkg_mgr: "{{pkg_mgr_var}}"
+    vars:
+      pkg_mgr_var: "{{  pkg_mgr_reg['results']
+                        | selectattr('rc', '==', 0)
+                        | map(attribute='stdout_lines')
+                        | first
+                        | first
+                        | basename }}"
 
-            # Attempt to install python3 even if cache update fails
-            - name: Install python3 package (pacman)
-              ansible.builtin.raw: >
-                {{ ansible_become_method | default('') }} pacman --sync
-                --noconfirm python3
-              when: not ansible_check_mode
-
-            rescue:
-
-            - name: The package manager is aptitude
-              ansible.builtin.raw: which apt-get || command -v apt-get
-              changed_when: false
-
-            - name: Update package cache (apt)
-              ansible.builtin.raw: >
-                {{ ansible_become_method | default('') }} apt-get update
-              ignore_errors: true
-              when: not ansible_check_mode
-
-            # Attempt to install python3 even if cache update fails
-            - name: Install python3 package (apt)
-              ansible.builtin.raw: >
-                {{ ansible_become_method | default('') }} apt-get install
-                --assume-yes python3
-              when: not ansible_check_mode
-
-          rescue:
-
-          - name: The package manager is dnf
-            ansible.builtin.raw: which dnf || command -v dnf
-            changed_when: false
-
-          # Exit code 100 indicates that updates are available
-          - name: Update package cache (dnf)
-            ansible.builtin.raw: dnf check-update
-            register: dnf_cache_update_reg
-            failed_when: dnf_cache_update_reg['rc'] not in [0, 100]
-            ignore_errors: true
-            when: not ansible_check_mode
-
-          # Attempt to install python3 even if cache update fails
-          - name: Install python3 package (dnf)
-            ansible.builtin.raw: >
-              {{ ansible_become_method | default('') }} dnf install
-              --assumeyes python3
-            when: not ansible_check_mode
-
-        rescue:
-
-        - name: The package manager is yum
-          ansible.builtin.raw: which yum || command -v yum
-          changed_when: false
-
-        # Exit code 100 indicates that updates are available
-        - name: Update package cache (yum)
-          ansible.builtin.raw: yum check-update
-          register: yum_cache_update_reg
-          failed_when: yum_cache_update_reg['rc'] not in [ 0,100 ]
-          ignore_errors: true
-          when: not ansible_check_mode
-
-        # Attempt to install python even if cache update fails
-        # RHEL 7 policycoreutils don't work with Python 3
-        - name: Install python package (yum)
-          ansible.builtin.raw: >
-            {{ ansible_become_method | default('') }} yum install --assumeyes
-            python
-          when: not ansible_check_mode
-
-      rescue:
-
-      - name: The operating system is FreeBSD
-        ansible.builtin.assert:
-          that: uname_reg['stdout_lines'][0] | lower != 'freebsd'
-          quiet: true
-
-      - name: Update package cache (FreeBSD)
-        ansible.builtin.raw: >
-          {{ ansible_become_method | default('') }} pkg update -f
-        ignore_errors: true
-        when: not ansible_check_mode
-
-      - name: Install python3 package (FreeBSD)
-        ansible.builtin.raw: >
-          {{ ansible_become_method | default('') }} pkg install --yes python3
-        when: not ansible_check_mode
-
-    rescue:
-
-    - name: The operating system is OpenBSD
-      ansible.builtin.assert:
-        that: uname_reg['stdout_lines'][0] | lower != 'openbsd'
-        quiet: true
-
-    - name: Install python3 package (OpenBSD)
-      ansible.builtin.raw: >
-        {{ ansible_become_method | default('') }} pkg_add -aIz python3
-      when: not ansible_check_mode
-
-  rescue:
-
-  - name: The operating system is OpenBSD
+  - name: Sanity check package manager
     ansible.builtin.assert:
-      that: uname_reg['stdout_lines'][0] | lower != 'darwin'
+      that: pkg_mgr in ['pacman', 'apt-get', 'dnf', 'yum']
       quiet: true
+
+  - name: The package manager is pacman
+    block:
+
+    - name: Update package cache (pacman)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} pacman --sync
+        --refresh --refresh
+      ignore_errors: true
+
+    # Attempt to install python3 even if cache update fails
+    - name: Install python3 package (pacman)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} pacman --sync
+        --noconfirm python3
+
+    when:
+    - not ansible_check_mode
+    - pkg_mgr == 'pacman'
+
+  - name: The package manager is aptitude
+    block:
+
+    - name: Update package cache (apt)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} apt-get update
+      ignore_errors: true
+
+    # Attempt to install python3 even if cache update fails
+    - name: Install python3 package (apt)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} apt-get install
+        --assume-yes python3
+
+    when:
+    - not ansible_check_mode
+    - pkg_mgr == 'apt-get'
+
+  - name: The package manager is dnf
+    block:
+
+    # Exit code 100 indicates that updates are available
+    - name: Update package cache (dnf)
+      ansible.builtin.raw: dnf check-update
+      register: dnf_cache_update_reg
+      failed_when: dnf_cache_update_reg['rc'] not in [0, 100]
+      ignore_errors: true
+
+    # Attempt to install python3 even if cache update fails
+    - name: Install python3 package (dnf)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} dnf install
+        --assumeyes python3
+
+    when:
+    - not ansible_check_mode
+    - pkg_mgr == 'dnf'
+
+  - name: The package manager is yum
+    block:
+
+    # Exit code 100 indicates that updates are available
+    - name: Update package cache (yum)
+      ansible.builtin.raw: yum check-update
+      register: yum_cache_update_reg
+      failed_when: yum_cache_update_reg['rc'] not in [0, 100]
+      ignore_errors: true
+
+    # Attempt to install python even if cache update fails
+    # RHEL 7 policycoreutils don't work with Python 3
+    - name: Install python package (yum)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} yum install --assumeyes
+        python
+
+    when:
+    - not ansible_check_mode
+    - pkg_mgr == 'yum'
+
+  when: uname_reg['stdout_lines'][0] | lower == 'linux'
+
+- name: Install Python on FreeBSD
+  block:
+
+    - name: Update package cache (FreeBSD)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} pkg update -f
+      ignore_errors: true
+
+    - name: Install python3 package (FreeBSD)
+      ansible.builtin.raw: >
+        {{ ansible_become_method | default('') }} pkg install --yes python3
+
+  when:
+  - not ansible_check_mode
+  - uname_reg['stdout_lines'][0] | lower == 'freebsd'
+
+- name: Install Python on OpenBSD
+  block:
+
+  - name: Install python3 package (OpenBSD)
+    ansible.builtin.raw: >
+      {{ ansible_become_method | default('') }} pkg_add -aIz python3
+
+  when:
+  - not ansible_check_mode
+  - uname_reg['stdout_lines'][0] | lower == 'openbsd'
+
+- name: Install Python on macOS
+  block:
 
   - name: Install Homebrew and Python 3
     community.general.homebrew:
       name:
       - python3
       state: installed
+
+  when:
+  - not ansible_check_mode
+  - uname_reg['stdout_lines'][0] | lower == 'darwin'
 
 # Recursion
 - name: Configure Python interpreter

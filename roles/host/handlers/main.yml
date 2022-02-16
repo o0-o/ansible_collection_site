@@ -3,3 +3,14 @@
 
 - name: update service facts
   ansible.builtin.service_facts:
+
+- name: restore selinux contexts
+  ansible.builtin.shell:
+    cmd: >
+      /usr/sbin/restorecon -Frv /dev /etc /home /usr /var/lib /var/db
+      /var/local /var/log
+  register: apply_contexts_to_system_reg
+  changed_when: >
+    apply_contexts_to_system_reg['stdout_lines'][0] | default('') != ''
+  become: true
+  when: not ansible_check_mode

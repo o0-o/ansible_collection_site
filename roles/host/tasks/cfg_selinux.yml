@@ -15,31 +15,30 @@
 - name: SELinux is available
   ansible.builtin.set_fact:
     selinux_available: true
-  when: selinux_check_reg['rc'] == 0
+  changed_when: true
+  notify:
+  - restore selinux contexts
+  - save host vars
+  when:
+  - not selinux_available
+  - selinux_check_reg['rc'] == 0
 
 - name: SELinux is unavailable
   ansible.builtin.set_fact:
     selinux_available: false
-  when: selinux_available is undefined
+  changed_when: true
+  notify: save host vars
+  when:
+  - selinux_available
+  - selinux_check_reg['rc'] == 1
 
-- name: If SELinux is available, ensure it is enabled and policy is applied
-  block:
+- name: Enable SELinux
+  ansible.posix.selinux:
+    policy: targeted
+    state: enforcing
+  become: true
+  when: selinux_available
 
-  - name: Enable SELinux
-    ansible.posix.selinux:
-      policy: targeted
-      state: enforcing
-    become: yes
-
-  - name: Apply all policy contexts recursively
-    ansible.builtin.shell:
-      cmd: >
-        /usr/sbin/restorecon -Frv /dev /etc /home /usr /var/lib /var/db
-        /var/local /var/log
-    register: apply_contexts_to_system_reg
-    changed_when: >
-      apply_contexts_to_system_reg['stdout_lines'][0] | default('') != ''
-    become: yes
-    when: not ansible_check_mode
-
+- name: Load SELinux variables if SELinux is available
+  ansible.builtin.include_vars: vars/sudo/selinux.yml
   when: selinux_available

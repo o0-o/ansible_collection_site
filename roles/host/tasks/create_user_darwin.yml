@@ -1,0 +1,13 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Create ansible user on macOS
+#
+########################################################################
+
+# Ansible user module's password_lock option fails on macOS
+- name: Create ansible user (macOS)
+  ansible.builtin.user:
+    name: "{{new_user_var}}"
+  register: user_changed
+  become: true

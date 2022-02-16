@@ -1,16 +1,53 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
-- name: Load platform-specific variables
-  ansible.builtin.include_vars: >
-    vars/{{ lookup('first_found', files_var) | default('/dev/null') }}.yml
+- name: Load platform-specific dependency variables
+  ansible.builtin.include_vars: "{{lookup('first_found', files_var)}}"
   vars:
     files_var:
-    - "{{ ansible_distribution | lower }}-\
-      {{ ansible_distribution_version | lower }}"
-    - "{{ ansible_distribution | lower }}-\
-      {{ ansible_distribution_major_version | default('') | lower }}"
-    - "{{ ansible_distribution | lower }}"
-    - "{{ ansible_service_mgr | lower }}"
-    - "{{ ansible_system | lower }}"
-    - "{{ ansible_os_family | lower }}"
+      files:
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}.yml"
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "{{ ansible_distribution | lower }}.yml"
+      - "{{ ansible_service_mgr | lower }}.yml"
+      - "{{ ansible_system | lower }}.yml"
+      - "{{ ansible_os_family | lower }}.yml"
+      - /dev/null
+      paths:
+      - vars/dependencies/
+
+- name: Load platform-specific sudo variables
+  ansible.builtin.include_vars: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}.yml"
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "{{ ansible_distribution | lower }}.yml"
+      - "{{ ansible_service_mgr | lower }}.yml"
+      - "{{ ansible_system | lower }}.yml"
+      - "{{ ansible_os_family | lower }}.yml"
+      - /dev/null
+      paths:
+      - vars/sudo/
+
+- name: Load platform-specific groups variables
+  ansible.builtin.include_vars: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}.yml"
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "{{ ansible_distribution | lower }}.yml"
+      - "{{ ansible_service_mgr | lower }}.yml"
+      - "{{ ansible_system | lower }}.yml"
+      - "{{ ansible_os_family | lower }}.yml"
+      - /dev/null
+      paths:
+      - vars/groups/
