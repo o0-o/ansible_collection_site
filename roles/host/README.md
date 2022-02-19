@@ -4,7 +4,17 @@ Configure a generic host. Configuration here can apply to any host including loc
 
 ## Requirements
 
-None
+Target hosts should run a recent version of the following operating systems (or compatible derivative):
+
+* Arch Linux
+* Debian
+* Ubuntu
+* RHEL Family V7
+* RHEL Family V8
+* Fedora
+* FreeBSD
+* OpenBSD
+* macOS
 
 ## Role Variables
 
