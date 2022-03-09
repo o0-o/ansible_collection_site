@@ -17,8 +17,6 @@ github.com/o0-o/ansible_collection_site/tree/main/roles/inventory"
     | wordwrap(70)
     | comment(  prefix=yaml_comment_prefix | default(),
                 postfix=default_comment_postfix | default() ) }}
-# Service Definitions
-
 # BEGIN ANSIBLE MANAGED BLOCK: Service Definitions
 srv_defs:
   {{  update_srv_defs
@@ -27,8 +25,6 @@ srv_defs:
       | indent(2)
       | trim }}
 # END ANSIBLE MANAGED BLOCK: Service Definitions
-
-# Sites
 
 # BEGIN ANSIBLE MANAGED BLOCK: Site - {{site_uri}}
 {{site_group}}:

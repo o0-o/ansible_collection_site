@@ -24,10 +24,84 @@
     backup: true
   delegate_to: 127.0.0.1
 
-- name: save host vars
-  ansible.builtin.template:
-    src: host_vars.yml.j2
-    dest: "{{cwd}}/inventory/host_vars\
+- name: save ansible host to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_host:'
+    insertbefore: '# Add custom variables below:'
+    line: "ansible_host: {{ update_ansible_host
+                            | default( ansible_host | default('') )
+                            | default( omit, true ) }}"
     backup: true
   delegate_to: 127.0.0.1
+  listen: save host vars
+
+- name: save ansible user to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_user:'
+    insertbefore: '# Add custom variables below:'
+    line: "ansible_user: {{ update_ansible_user
+                            | default( ansible_user | default('root') ) }}"
+    backup: true
+  delegate_to: 127.0.0.1
+  listen: save host vars
+
+- name: save ansible python interpreter to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_python_interpreter:'
+    insertbefore: '# Add custom variables below:'
+    line: >
+      ansible_python_interpreter: {{  update_ansible_python_interpreter
+                                      | default(  ansible_python_interpreter
+                                                  | default('') )
+                                      | default( omit, true ) }}
+    backup: true
+  delegate_to: 127.0.0.1
+  listen: save host vars
+
+- name: save ansible become method to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_become_method:'
+    insertbefore: '# Add custom variables below:'
+    line: "ansible_become_method: {{  update_ansible_become_method
+                                      | default(  ansible_become_method
+                                                  | default('') )
+                                      | default( omit, true ) }}"
+    backup: true
+  delegate_to: 127.0.0.1
+  listen: save host vars
+
+- name: save ansible port to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_port:'
+    insertbefore: '# Add custom variables below:'
+    line: "ansible_port: {{ update_ansible_port
+                            | default( ansible_port | default(22) ) }}"
+    backup: true
+  delegate_to: 127.0.0.1
+  listen: save host vars
+
+- name: save ansible ssh private key file to host vars
+  ansible.builtin.lineinfile:
+    path: "{{cwd}}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    regexp: '^#?ansible_ssh_private_key_file:'
+    insertbefore: '# Add custom variables below:'
+    line: >
+      ansible_ssh_private_key_file: {{  update_ansible_ssh_private_key_file
+                                        | default(
+                                            ansible_ssh_private_key_file
+                                            | default('') )
+                                        | default( omit, true ) }}
+    backup: true
+  delegate_to: 127.0.0.1
+  listen: save host vars

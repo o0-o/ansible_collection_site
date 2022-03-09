@@ -104,3 +104,4 @@
   vars:
     hv_var: "{{cwd}}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
+  notify: save host vars

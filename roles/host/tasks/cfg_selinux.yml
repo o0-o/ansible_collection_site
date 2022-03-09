@@ -18,7 +18,6 @@
   changed_when: true
   notify:
   - restore selinux contexts
-  - save host vars
   when:
   - not selinux_available
   - selinux_check_reg['rc'] == 0
@@ -27,7 +26,6 @@
   ansible.builtin.set_fact:
     selinux_available: false
   changed_when: true
-  notify: save host vars
   when:
   - selinux_available
   - selinux_check_reg['rc'] == 1
