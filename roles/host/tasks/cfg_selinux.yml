@@ -15,9 +15,6 @@
 - name: SELinux is available
   ansible.builtin.set_fact:
     selinux_available: true
-  changed_when: true
-  notify:
-  - restore selinux contexts
   when:
   - not selinux_available
   - selinux_check_reg['rc'] == 0

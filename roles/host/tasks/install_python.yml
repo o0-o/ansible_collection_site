@@ -78,6 +78,15 @@
   - name: The package manager is dnf
     block:
 
+    # Force update the clock. Specifically when VMs are restored from
+    # snapshots, the clock can persist at the original snapshot time
+    # which causes certificate errors which prevent dnf from working.
+    - name: Sync clock
+      ansible.builtin.raw: >
+        {{ansible_become_method}} systemctl restart chronyd.service &&
+        sleep 10 &&
+        date
+
     # Exit code 100 indicates that updates are available
     - name: Update package cache (dnf)
       ansible.builtin.raw: dnf check-update
