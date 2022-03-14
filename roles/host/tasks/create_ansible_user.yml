@@ -30,7 +30,7 @@
             | difference(['ff:ff:ff:ff:ff:ff'])
             | join(' ') }}
 
-- name: "Generate randomized Ansible user name adm_{{user_suffix_var}}"
+- name: Generate randomized Ansible user name
   ansible.builtin.set_fact:
     new_ansible_user: "adm_{{user_suffix_var}}"
   vars:
@@ -51,7 +51,7 @@
       - tasks/
     new_user_var: "{{new_ansible_user}}"
 
-- name: "Determine which SSH key to use for {{new_ansible_user}}"
+- name: Determine which SSH key to use for new user
   block:
 
   # Replicate ssh-copy-id behavior using most recent key first
@@ -61,7 +61,7 @@
     register: ssh_pub_key_reg
     delegate_to: 127.0.0.1
 
-  - name: "Use {{pub_key_file_var}} to authenticate as {{new_ansible_user}}"
+  - name: Use SSH key to authenticate as new user
     ansible.posix.authorized_key:
       user: "{{new_ansible_user}}"
       key: "{{lookup('file', pub_key_file_var)}}"
@@ -71,17 +71,15 @@
 
   when: ansible_ssh_private_key_file is undefined
 
-- name: >
-    Use {{ansible_ssh_private_key_file}} to authenticate as
-    {{new_ansible_user}}
+- name: Use SSH key to authenticate as new user
   block:
 
-  - name: "Get public SSH key from {{ansible_ssh_private_key_file}}"
+  - name: Get public SSH key
     ansible.builtin.shell:
       cmd: "ssh-keygen -y -f {{ansible_ssh_private_key_file}}"
     register: ssh_pub_key_reg
 
-  - name: "Install public SSH key on host"
+  - name: Install public SSH key on host
     ansible.posix.authorized_key:
       user: "{{new_ansible_user}}"
       key: "{{ssh_pub_key_reg['stdout_lines'][0]}}"

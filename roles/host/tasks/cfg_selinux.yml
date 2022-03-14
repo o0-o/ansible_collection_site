@@ -16,16 +16,13 @@
   ansible.builtin.set_fact:
     selinux_available: true
   when:
-  - not selinux_available
   - selinux_check_reg['rc'] == 0
 
 - name: SELinux is unavailable
   ansible.builtin.set_fact:
     selinux_available: false
-  changed_when: true
   when:
-  - selinux_available
-  - selinux_check_reg['rc'] == 1
+  - selinux_check_reg['rc'] != 0
 
 - name: Enable SELinux
   ansible.posix.selinux:

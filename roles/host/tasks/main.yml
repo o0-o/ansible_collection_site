@@ -5,7 +5,7 @@
 #
 ########################################################################
 
-- name: "Configure connection to {{inventory_hostname}}"
+- name: Configure connection to host
   ansible.builtin.include_tasks: cfg_con.yml
 
 - name: Configure privilege escalation
@@ -16,6 +16,9 @@
   ansible.builtin.raw: uname
   register: uname_reg
   changed_when: false
+
+- name: Sync clocks
+  ansible.builtin.include_tasks: cfg_time.yml
 
 - name: Install macOS Dependencies
   block:
@@ -69,12 +72,12 @@
   - ansible_user == 'root'
   - not use_root_user
 
-- name: "Grant administrator privileges to {{adm_user_var}}"
+- name: Grant administrator privileges to new administrator
   ansible.builtin.include_tasks: grant_user_adm.yml
   vars:
     adm_user_var: "{{ new_ansible_user | default(ansible_user) }}"
 
-- name: "Switch Ansible user to {{new_ansible_user}}"
+- name: Switch Ansible user to new administrator
   ansible.builtin.include_tasks: switch_ansible_user.yml
   when: new_ansible_user is defined
 

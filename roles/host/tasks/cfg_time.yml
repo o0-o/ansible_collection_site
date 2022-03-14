@@ -1,0 +1,48 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Sync time on the host if it is more than 5 minutes off from localhost.
+#
+########################################################################
+
+- name: Get time from the host
+  ansible.builtin.raw: date -u '+%Y-%m-%d %H:%M:%S'
+  register: remote_date_reg
+  changed_when: false
+
+- name: Calculate difference in dates
+  ansible.builtin.set_fact:
+    date_diff: "{{  ((  local_date_var | to_datetime
+                        - remote_date_var | to_datetime ).total_seconds() / 60)
+                    | int
+                    | abs }}"
+  vars:
+    local_date_var: "{{ now(true, '%Y-%m-%d %H:%M:%S') }}"
+    remote_date_var: "{{remote_date_reg['stdout_lines'][0]}}"
+
+- name: Sync time between remote host and localhost
+  block:
+
+  - name: Times are in sync within 5 minutes
+    ansible.builtin.assert:
+      that: date_diff | int < 5
+      quiet: true
+
+  rescue:
+
+  - name: Use date format mmddHHMMccyy.ss
+    ansible.builtin.set_fact:
+      date_format: '%m%d%H%M%Y.%S'
+    when: uname_reg['stdout_lines'][0] | lower in ['linux', 'darwin']
+
+  - name: Use date format ccyymmddHHMM.ss
+    ansible.builtin.set_fact:
+      date_format: '%Y%m%d%H%M.%S'
+    when: uname_reg['stdout_lines'][0] | lower in ['freebsd', 'openbsd']
+
+  - name: Set date
+    ansible.builtin.raw: >
+      TZ=GMT {{ ansible_become_method | default('') }} date {{local_date_var}}
+    vars:
+      local_date_var: "{{ now(true, date_format) }}"
+    when: not ansible_check_mode

@@ -5,12 +5,12 @@
 #
 ########################################################################
 
-- name: "{{new_ansible_user}} can connect to the host"
+- name: New user can connect to the host
   ansible.builtin.ping:
   vars:
     ansible_user: "{{new_ansible_user}}"
 
-- name: "{{new_ansible_user}} can use {{ansible_become_method}}"
+- name: New user can escalate privileges (become method)
   ansible.builtin.shell:
     cmd: true
   changed_when: false
@@ -18,11 +18,11 @@
   vars:
     ansible_user: "{{new_ansible_user}}"
 
-- name: "Store old Ansible user before updating to {{new_ansible_user}}"
+- name: Save old Ansible user name before updating to new user
   ansible.builtin.set_fact:
     old_ansible_user: "{{ansible_user}}"
 
-- name: Ansible user
+- name: Set new Ansible user
   ansible.builtin.set_fact:
     ansible_user: "{{new_ansible_user}}"
   changed_when: old_ansible_user != new_ansible_user

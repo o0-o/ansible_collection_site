@@ -25,13 +25,13 @@
 - name: Configure SSH connection
   block:
 
-  - name: "SSH host address is {{host_addr_var}}"
+  - name: SSH host address is configured
     ansible.builtin.set_fact:
       host_addr: "{{host_addr_var}}"
     vars:
       host_addr_var: "{{ ansible_host | default(inventory_hostname) }}"
 
-  - name: "{{host_addr}} is reachable"
+  - name: Host is reachable
     ansible.builtin.shell:
       cmd: "ping -c 2 {{host_addr}}"
     changed_when: false
@@ -41,11 +41,7 @@
     - host_addr != '127.0.0.1'
 
   # Must quote 'true' with raw module
-  - name: >
-      ssh://{{  ansible_user
-                | default('root') }}@{{host_addr}}:{{ ansible_port
-                                                      | default('22') }} is
-      functional
+  - name: SSH is functional
     ansible.builtin.raw: 'true'
     changed_when: false
     when: ansible_connection | default('ssh') == 'ssh'
@@ -58,6 +54,7 @@
   # hostname.
   - name: Get SSH configuration from Vagrant
     ansible.builtin.shell:
+      chdir: "{{cwd}}"
       cmd: >
         vagrant ssh-config {{inventory_hostname}} ||
         vagrant ssh-config {{ inventory_hostname | split('.') | first }}
@@ -66,9 +63,7 @@
     delegate_to: 127.0.0.1
 
   # Must quote 'true' with raw module
-  - name: >
-      ssh://{{ansible_user}}@{{ansible_host}}:{{ansible_port}} with key
-      {{ansible_ssh_private_key_file}} is functional
+  - name: Vagrant SSH connection is functional
     ansible.builtin.raw: 'true'
     changed_when: false
     vars:
@@ -90,9 +85,7 @@
                                         | split(' ')
                                         | last }}"
 
-  - name: >
-      Use ssh://{{ssh_user_var}}@{{ssh_host_var}}:{{ssh_port_var}} with key
-      {{ssh_key_var}}
+  - name: Use Vagrant SSH configuration
     ansible.builtin.set_fact:
       ansible_host: "{{ssh_host_var}}"
       ansible_port: "{{ssh_port_var}}"

@@ -20,13 +20,13 @@
   - name: The Python interpreter is already configured
     block:
 
-    - name: "{{ansible_python_interpreter}} is valid"
+    - name: Python interpreter is valid
       ansible.builtin.raw: "{{ansible_python_interpreter}} --version"
       changed_when: false
 
     rescue:
 
-    - name: "Set Python interpreter to {{python_interpreter_var}}"
+    - name: Set Python interpreter
       ansible.builtin.set_fact:
         ansible_python_interpreter: "{{python_interpreter_var}}"
       changed_when: true
@@ -36,5 +36,10 @@
 
   rescue:
 
+  - name: "Python installation attempt {{ py_attempt | default(1) }}"
+    ansible.builtin.set_fact:
+      py_attempt: py_attempt | default(0) | int + 1
+
   - name: Install Python
     ansible.builtin.include_tasks: install_python.yml
+    when: py_attempt | int < 2
