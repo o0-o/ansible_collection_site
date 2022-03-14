@@ -94,7 +94,7 @@
 
   run_once: true
 
-- name: Initialize {{hv_var}} if it doesn't exist (do not run for localhost)
+- name: Initialize hostvars file if it doesn't exist (skips localhost)
   ansible.builtin.template:
     src: host_vars.yml.j2
     dest: "{{hv_var}}"
