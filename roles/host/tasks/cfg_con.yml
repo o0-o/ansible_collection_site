@@ -14,7 +14,7 @@
     changed_when: false
     register: current_user_reg
 
-  - name: "The current user is {{user_var}}"
+  - name: Found localhost user
     ansible.builtin.set_fact:
       ansible_user: "{{user_var}}"
     vars:
