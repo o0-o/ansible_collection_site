@@ -12,7 +12,7 @@
 
 - name: Calculate difference in dates
   ansible.builtin.set_fact:
-    date_diff: "{{  ((  local_date_var | to_datetime
+    date_diff: "{{  ( ( local_date_var | to_datetime
                         - remote_date_var | to_datetime ).total_seconds() / 60)
                     | int
                     | abs }}"
@@ -23,9 +23,9 @@
 - name: Sync time between remote host and localhost
   block:
 
-  - name: Times are in sync within 5 minutes
+  - name: Times are in sync within an hour
     ansible.builtin.assert:
-      that: date_diff | int < 5
+      that: date_diff | int < 60
       quiet: true
 
   rescue:
