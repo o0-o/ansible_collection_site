@@ -1,0 +1,110 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure CARP interfaces
+#
+# No configuration in host_vars or group vars is necessary for CARP. By
+# default, a CARP interface is configured corresponding to each network
+# ID. Additionally, carp1 is assigned to the default gateway (unless it
+# is associated with a VLAN).
+#
+# Other interfaces are not configured with CARP, simply because of the
+# limitation of VHID (1-255).
+#
+# CARP priority (advskew) is set according to the suffix number found in
+# the hostname. For instance, gw1 would receive an advskew of 1 while
+# gw2 would receive an advskew of 2, resulting in gw1 as a primary and
+# and gw2 as failover.
+#
+# Documentation on CARP can be found here:
+# https://www.openbsd.org/faq/pf/carp.html
+# https://man.openbsd.org/carp
+#
+########################################################################
+
+- name: "Reset interface variables for {{carp_var['dev']}}"
+  ansible.builtin.include_tasks: def_iface.yml
+
+# CARP interfaces are configured first in case only one address is
+# available (in the case of WAN gateway), it should be CARP.
+
+- name: Retrieve CARP password from gateways (OpenBSD)
+  ansible.builtin.command:
+    cmd: "awk '/^pass / {print $2}' /etc/hostname.{{iface['dev']}}"
+  register: retrieve_carp_pass
+  changed_when: false
+  failed_when: false
+  delegate_to: "{{carp_host_item}}"
+  become: yes
+  loop: "{{groups[site_group]}}"
+  loop_control:
+    loop_var: carp_host_item
+
+- name: Define CARP password based on existing config if a password was found
+  ansible.builtin.set_fact:
+    carp_pass: "{{  retrieve_carp_pass['results']
+                    | map(attribute='stdout')
+                    | unique
+                    | first }}"
+  register: def_carp_reg
+  when: 0 in retrieve_carp_pass['results'] | map(attribute='rc')
+
+- name: Generate random CARP password
+  ansible.builtin.set_fact:
+    carp_pass: "{{ lookup(  'password',
+                            '/dev/null chars=ascii_letters,digits') }}"
+  when: def_carp_reg is skipped
+
+# Will default to 0 if no numerical suffix is found in hostname
+- name: "Set advskew to {{advskew_var}} for {{iface['dev']}}"
+  ansible.builtin.set_fact:
+    advskew: "{{advskew_var}}"
+  vars:
+    advskew_var: "{{  inventory_hostname
+                      | split['.']
+                      | first
+                      | regex_search('[0-9]*$')
+                      | int }}"
+
+# In case the address pool only has one viable IP, remove any pre-
+# configured address from the CARP parent interface
+#- name: Remove any address on parent interface
+#  ansible.builtin.shell:
+#    cmd: >
+#      ifconfig {{iface['dev']}} -inet ||
+#      ip addr flush dev {{iface['dev']}}
+#  become: yes
+
+- name: Define the IP address for the interface
+  ansible.builtin.include_tasks: def_iface_ip4.yml
+
+- name: Run platform-specific interface configuration tasks
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  vars:
+    prefix_var: cfg_iface_
+    suffix_var: .yml
+    files_var:
+      files:
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower() }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_os_family | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_system | lower }}\
+        {{suffix_var}}"
+      paths:
+      - tasks/
+
+- name: Reset CARP password
+  ansible.builtin.set_fact:
+    carp_pass: ''

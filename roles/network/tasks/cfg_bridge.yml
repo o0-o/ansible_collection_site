@@ -1,59 +1,42 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible:noai
 #
-# Configure bridged interfaces based on the iface list in host_vars
-# and net dictionary in group_vars.
+# Configure bridged interfaces based on the ifaces list in host_vars
+# and nets dictionary in group_vars.
 #
 ########################################################################
 
-# Interfaces in the inventory that specify a the bridge.
-- name: "Enumerate physical interfaces in {{bridge_item}} bridge"
+# All bridges need a vether device in OpenBSD
+- name: Initialize bridge members list
   ansible.builtin.set_fact:
-    current_bridge_members: "{{ current_bridge_members
-                                | default([])
-                                | union([dev_item]) }}"
-  loop: "{{ iface
+    bridge_members: []
+
+# Interfaces in the inventory that specify a the bridge.
+- name: Enumerate physical interfaces in the bridge
+  ansible.builtin.set_fact:
+    bridge_members: "{{ bridge_members
+                        | union([dev_item]) }}"
+  loop: "{{ phy_ifaces
             | selectattr('bridge', 'defined')
             | selectattr('bridge', '==', bridge_item)
-            | map (attribute='dev_item') }}"
+            | map (attribute='dev') }}"
   loop_control:
     loop_var: dev_item
 
-# Interfaces in the inventory that specify the network associated with
-# the bridge.
-- name: "Add physical interfaces in bridge network {{bridge_item}}"
-  ansible.builtin.set_fact:
-    current_bridge_members: "{{ current_bridge_members
-                                | default([])
-                                | union([dev_item]) }}"
-  loop: "{{ iface
-            | selectattr('net', 'defined')
-            | selectattr('net', '==', bridge_item)
-            | map (attribute='dev_item') }}"
-  loop_control:
-    loop_var: dev_item
-
-# VLANS in the inventory that specify the network associated with the
+# VLAN in the inventory that specify the network associated with the
 # bridge.
-- name: "Add VLANs in bridge network {{bridge_item}}"
+- name: Add VLAN to the bridge
   ansible.builtin.set_fact:
-    current_bridge_members: "{{ current_bridge_members | default([])
-                                + [bridge_vlan] }}"
+    bridge_members: "{{ bridge_members
+                        | union([bridge_vlan]) }}"
   vars:
-    bridge_vlan: "{{ 'vlan' + net[bridge_item]['id'] | string }}"
+    bridge_vlan: "{{ 'vlan' + site_subnets[bridge_item]['subnet_id']
+                              | string }}"
 
-- name: "Set the bridge device name to {{ 'bridge'
-                                          + net[bridge_item]['id'] | string }}"
+- name: Define the bridge name
   ansible.builtin.set_fact:
-    current_bridge_dev: "{{ 'bridge' + net[bridge_item]['id'] | string }}"
+    bridge_dev: "{{ 'bridge' +  site_subnets[bridge_item]['subnet_id']
+                                | string }}"
 
-- name: "Save {{current_bridge_dev}} config on {{inventory_hostname}}"
-  ansible.builtin.template:
-    src: hostname.bridge.j2
-    dest: "/etc/hostname.{{current_bridge_dev}}"
-    owner: root
-    group: wheel
-    mode: 0640
-    backup: yes
-  become: yes
-  notify: restart network
+- name: Save bridge configuration to host
+  ansible.builtin.include_tasks: "cfg_bridge_{{ansible_system}}.yml"

@@ -1,0 +1,54 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Build a list of dictionaries for each physical network interface by
+# parsing dmesg. This is a last resort as dmesg can be an unreliable
+# source of information. However, we do take some steps to ensure that
+# the data is valid.
+#
+# If a network device shows up in dmesg in but was not present when
+# Ansible gathered facts (device name not included in
+# ansible_interfaces), it is not included in the list.
+#
+# Results where a MAC address is identified but no interface is found
+# are also not included.
+#
+########################################################################
+
+- name: Get boot log (dmesg)
+  ansible.builtin.command:
+    cmd: dmesg
+  become: true
+  changed_when: false
+  register: dmesg_reg
+
+# I'm sorry this is a lot
+- name: Parse hardware addresses and device names from boot log
+  ansible.builtin.set_fact:
+    phy_ifaces_disco: >-
+      {{  phy_ifaces_disco
+          | default([])
+          | union(  [ { 'dev':  iface_lines_item
+                                | map('regex_replace', ':', '')
+                                | intersect(ansible_interfaces)
+                                | join,
+                        'hw_addr':  iface_lines_item
+                                    | select( 'match',
+                                              '^' + hw_addr_re_var + '$' )
+                                    | join } ] ) }}
+  vars:
+    hw_addr_re_var: '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}'
+  when:
+  - iface_lines_item
+    | map('regex_replace', ':', '')
+    | intersect(ansible_interfaces)
+    != []
+  - iface_lines_item
+    | select( 'match', '^' + hw_addr_re_var + '$' )
+    != []
+  loop: "{{ dmesg_reg['stdout_lines']
+            | map('lower')
+            | select('match', '^.*' + hw_addr_re_var + '.*$')
+            | map('split', ' ') }}"
+  loop_control:
+    loop_var: iface_lines_item

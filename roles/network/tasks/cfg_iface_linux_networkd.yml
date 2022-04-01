@@ -1,0 +1,58 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure an interface on Linux with networkd.
+#
+########################################################################
+
+- name: "Configure the {{iface['dev']}} networkd netdev file"
+  ansible.builtin.template:
+    src: networkd/iface.netdev.j2
+    dest: "{{netdev_var}}"
+    owner: root
+    group: root
+    mode: 0644
+    backup: true
+  become: true
+  vars:
+    netdev_var: "/etc/systemd/network/00_{{iface['dev']}}.netdev"
+  when: iface['type'] == 'vlan'
+  notify: restart network
+
+- name: "Configure the {{iface['dev']}} networkd link file"
+  ansible.builtin.template:
+    src: networkd/iface.link.j2
+    dest: "{{link_var}}"
+    owner: root
+    group: root
+    mode: 0644
+    backup: true
+  become: true
+  vars:
+    link_var: "\
+      /etc\
+      /systemd\
+      /network\
+      /00_{{  iface['hw_addr']
+              | default(iface['dev'])
+              | regex_replace(':', '-') }}.link"
+  notify: restart network
+
+- name: "Configure the {{iface['dev']}} networkd network file"
+  ansible.builtin.template:
+    src: networkd/iface.network.j2
+    dest: "{{net_var}}"
+    owner: root
+    group: root
+    mode: 0644
+    backup: true
+  become: true
+  vars:
+    net_var: "\
+      /etc\
+      /systemd\
+      /network\
+      /00_{{  iface['hw_addr']
+              | default(iface['dev'])
+              | regex_replace(':', '-') }}.network"
+  notify: restart network

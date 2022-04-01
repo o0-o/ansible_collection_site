@@ -1,0 +1,27 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Build a list of dictionaries for each physical network interface using
+# system_profiler on macOS.
+#
+########################################################################
+
+- name: Get network information on macOS using system_profiler
+  ansible.builtin.command:
+    cmd: system_profiler -json SPNetworkDataType
+  changed_when: false
+  register: system_profiler_network_reg
+
+- name: Define a list of hardware interface dictionaries
+  ansible.builtin.set_fact:
+    phy_ifaces_disco: >-
+      {{ phy_ifaces_disco
+         | default([])
+         | union( [ { 'dev':  prof_item['interface'],
+                      'hw_addr': prof_item['Ethernet']['MAC Address'] } ] ) }}
+  when: prof_item['Ethernet']['MAC Address'] is defined
+  loop: "{{ ( system_profiler_network_reg['stdout']
+              | from_json )['SPNetworkDataType']
+            | selectattr('Ethernet', 'defined') }}"
+  loop_control:
+    loop_var: prof_item

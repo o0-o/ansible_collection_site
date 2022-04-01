@@ -1,0 +1,129 @@
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Setup variables for use in interface configuration
+#
+# Call this before configuring an interface (including CARP and VLAN).
+#
+########################################################################
+
+# Precedence follows CARP, VLAN, virtual and then physical interface
+
+- name: "Define interface {{carp_var['dev']}} (CARP)"
+  ansible.builtin.set_fact:
+    iface: "{{ carp_var | combine({'type': 'carp'}) }}"
+  when: carp_var is defined
+
+- name: "Define interface {{vlan_var['dev']}} (VLAN)"
+  ansible.builtin.set_fact:
+    iface: "{{ vlan_var | combine({'type': 'vlan'}) }}"
+  when:
+  - carp_var is undefined
+  - vlan_var is defined
+
+- name: "Define interface {{virt_iface['dev']}} (virtual)"
+  ansible.builtin.set_fact:
+    iface: "{{ virt_iface | combine({'type': 'virt'}) }}"
+  when: virt_iface_var is defined
+
+- name: "Define interface {{phy_iface_item['dev']}} (physical)"
+  ansible.builtin.set_fact:
+    iface: "{{ phy_iface_item | combine({'type': 'phy'}) }}"
+  when:
+  - carp_var is undefined
+  - vlan_var is undefined
+  - virt_iface_var is undefined
+
+# Interface definitions override subnet definitions
+- name: "Apply subnet {{iface['subnet']}} configuration to {{iface['dev']}}"
+  ansible.builtin.set_fact:
+    iface: "{{ subnet_var | combine( iface, recursive=true ) }}"
+  vars:
+    subnet_var: "{{site_subnets[iface['subnet']]}}"
+  when: iface['subnet'] is defined
+
+# Except MTU which must be the hightest value between interface and
+# subnet definitions (default: 1500).
+- name: "The MTU of {{iface['dev']}} is {{mtu_var}}"
+  ansible.builtin.set_fact:
+    iface: "{{  iface | combine(  { 'mtu': mtu_var } ) }}"
+  vars:
+    mtu_var: "{{  [ iface['mtu'] | default(1500) | int,
+                    site_subnets[ iface['subnet']
+                                                | default(omit) ]['mtu']
+                    | default
+                    | int ]
+                  | max }}"
+
+- name: >-
+    MAC Address randomization for {{iface['dev']}} is
+    {{ rand_mac_var | ternary('enabled', 'disabled') }}
+  ansible.builtin.set_fact:
+    iface: "{{  iface
+                | combine(  { 'rand_mac': rand_mac_var } ) }}"
+  vars:
+    rand_mac_var: "{{ iface['rand_mac'] | default(true) }}"
+
+# DHCP is true by default if the subnet is defined and no address pool
+# is defined.
+- name: >-
+    IPv4 DHCP is {{ dhcp4_var | ternary('enabled', 'disabled') }} on
+    {{iface['dev']}}
+  ansible.builtin.set_fact:
+    iface: "{{  iface
+                | combine(  { 'dhcp4': dhcp4_var } ) }}"
+  register: iface_dhcp4_reg
+  vars:
+    dhcp4_var: "{{ iface['dhcp4'] | default(true) }}"
+  when:
+  - iface['subnet_id'] is defined
+  - iface['addrs'] is undefined
+
+# Otherwise, DHCP is false by default
+- name: >-
+    IPv4 DHCP is {{ dhcp4_var | ternary('enabled', 'disabled') }} on
+    {{iface['dev']}}
+  ansible.builtin.set_fact:
+    iface: "{{  iface
+                | combine(  { 'dhcp4': dhcp4_var } ) }}"
+  vars:
+    dhcp4_var: "{{ iface['dhcp4'] | default(false) }}"
+  when: iface_dhcp4_reg is skipped
+
+# Note that iface_ip4 does not indicate if DHCP is used or not
+- name: "Interface {{iface['dev']}} has an IPv4 address of {{ip_var}}"
+  ansible.builtin.set_fact:
+    iface_ip4: "{{ip_var}}"
+  vars:
+    iface_var: "{{ vars[ 'ansible_' + iface['dev']] | default }}"
+    ip_var: "{{ iface_var['ipv4'][0]['address']
+                | default(iface_var['ipv4']['address'])
+                | default('') }}"
+
+- name: Define the subnet address if subnet ID or address is defined
+  when: iface['subnet_id'] is defined or iface['addrs'] is defined
+  block:
+
+  - name: "Interface {{iface['dev']}} has a subnet prefix of {{prefix_var}}"
+    ansible.builtin.set_fact:
+      iface: "{{  iface
+                  | combine( { 'prefix4': prefix_var } ) }}"
+    vars:
+      prefix_var: "{{ iface['prefix4'] | default('24') }}"
+
+  - name: >-
+      "The network address for interface {{iface['dev']}} is
+      {{subnet_addr_var}}"
+    ansible.builtin.set_fact:
+      iface: "{{  iface
+                  | combine(  { 'subnet_addr':  subnet_addr_var } ) }}"
+    vars:
+      subnet_addr_var: "{{  ( iface['addrs'][0]
+                              | default(  '10.'
+                                          + site['id'] | string
+                                          + '.'
+                                          + iface['subnet_id'] | default('1')
+                                          + '.0' )
+                              + '/'
+                              + iface['prefix4']
+                                | string )
+                            | ansible.netcommon.ipaddr('subnet') }}"

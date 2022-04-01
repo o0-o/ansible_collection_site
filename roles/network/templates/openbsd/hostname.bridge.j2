@@ -10,14 +10,14 @@ members can be filtered with pf like any other interface.
 {{	default_comment_header
 	| comment(	prefix=default_comment_prefix | default(),
 			postfix=default_comment_postfix | default() ) }}
-
-description "{{	( net[current_bridge]['description'] + ' Bridge')
-		| default('Bridge') }}"
+{% if iface['description'] is defined %}
+description "{{iface['description']}} (Bridge)"
+{% endif %}
 
 # Members
-{% for dev in current_bridge_members %}
+{% for dev in bridge_members %}
 add {{dev}}
 {% endfor %}
 
-# Bring Up {{current_bridge_dev}}
+# Bring Up {{bridge_dev}}
 up

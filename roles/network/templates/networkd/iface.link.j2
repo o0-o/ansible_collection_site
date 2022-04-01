@@ -1,20 +1,17 @@
 [Match]
 
-{% if current_iface['mac_addr'] is defined %}
-PermanentMACAddress={{iface_item['mac_addr']}}
-{% elif current_iface == iface_item %}
-OriginalName={{current_iface['dev']}}
-{% elif current_iface == vlan_item | default({}) %}
-OriginalName={{vlan_item['dev']}}
+{% if iface['hw_addr'] is defined %}
+PermanentMACAddress={{iface['hw_addr']}}
+{% else %}
+OriginalName={{iface['dev']}}
 {% endif %}
 
 [Link]
 
-{% if current_iface['description']
-      | default(current_net['description']) is defined %}
-Description={{ current_iface['description'] | default(current_net['description']) }}
+{% if iface['description'] is defined %}
+Description={{iface['description']}}
 {% endif %}
-{% if current_iface['random_mac'] | default(true) %}
+{% if iface['rand_mac'] %}
 MACAddressPolicy=random
 {% else %}
 MACAddressPolicy=persistent

@@ -1,0 +1,145 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+
+- name: Load platform-specific variables
+  ansible.builtin.include_vars: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}.yml"
+      - "{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "{{ ansible_distribution | lower }}.yml"
+      - "{{ ansible_service_mgr | lower }}.yml"
+      - "{{ ansible_os_family | lower }}.yml"
+      - "{{ ansible_system | lower }}.yml"
+      - /dev/null
+      paths:
+      - vars/
+
+- name: Determine the network controller
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  vars:
+    prefix_var: def_net_ctl_srv_
+    suffix_var: .yml
+    files_var:
+      files:
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_service_mgr | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_os_family | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_system | lower }}\
+        {{suffix_var}}"
+      - /dev/null
+      paths:
+      - tasks/
+
+# Each dictionary contains the device name and hardware MAC address
+- name: Build a list of dictionaries for each physical network interface
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "def_phy_ifaces_{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower }}.yml"
+      - "def_phy_ifaces_{{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}.yml"
+      - "def_phy_ifaces_{{ ansible_distribution | lower }}.yml"
+      - "def_phy_ifaces_{{ ansible_service_mgr | lower }}.yml"
+      - "def_phy_ifaces_{{ ansible_os_family | lower }}.yml"
+      - "def_phy_ifaces_{{ ansible_system | lower }}.yml"
+      - def_phy_ifaces_dmesg.yml
+      paths:
+      - tasks/
+
+# If no physical interfaces are configured, use list of discovered
+# interfaces to build the inventory.
+- name: Discover and validate interface definitions
+  ansible.builtin.include_tasks: def_phy_iface.yml
+  loop: "{{ phy_ifaces | default(phy_ifaces_disco) }}"
+  loop_control:
+    loop_var: phy_iface_item
+
+- name: Use the new physical interface definitions
+  ansible.builtin.set_fact:
+    phy_ifaces: "{{new_phy_ifaces}}"
+  changed_when: true
+  when: phy_ifaces | default([]) != new_phy_ifaces | default([])
+  notify: save host vars
+
+# LAN addressing scheme follows: 10.site.subnet.host. Subnets are
+# randomly assigned between 2 and 255 (correlating to VLANs).
+
+# To assign VLANs to new or unconfigured networks, we need a list of
+# currently used network IDs to avoid collisions.
+- name: Define a list of used subnet IDs
+  ansible.builtin.set_fact:
+    subnet_ids: "{{ subnet_ids
+                    | default([])
+                    | union([subnet_item['subnet_id']]) }}"
+  when: subnet_item['subnet_id'] is defined
+  loop: "{{ site_subnets | dict2items | flatten(levels=1) }}"
+  loop_control:
+    loop_var: subnet_item
+
+- name: Build and validate subnet definitions
+  ansible.builtin.include_tasks: def_subnet.yml
+  when: site_subnets is defined
+  loop: "{{ site_subnets.keys() | list }}"
+  loop_control:
+    loop_var: subnet_name_item
+
+- name: Sanity check new network definitions
+  ansible.builtin.assert:
+    that: site_subnets | length == new_site_subnets | default({}) | length
+    quiet: true
+  when: site_subnets is defined
+
+- name: Use new subnet definitions
+  ansible.builtin.set_fact:
+    site_subnets: "{{new_site_subnets}}"
+  changed_when: true
+  when:
+  - site_subnets is defined
+  - new_site_subnets is defined
+  - site_subnets != new_site_subnets
+  notify: save net vars
+
+- name: Get IPv4 addresses from all hosts
+  ansible.builtin.setup:
+    filter:
+    - 'ansible_all_ipv4_addresses'
+  delegate_to: "{{all_hosts_item}}"
+  delegate_facts: true
+  ignore_errors: true
+  ignore_unreachable: true
+  run_once: true
+  loop: "{{groups['all']}}"
+  loop_control:
+    loop_var: all_hosts_item
+
+# run_once so the used_ip4s variable is available across all hosts
+- name: Define a list of used IPv4 addresses
+  ansible.builtin.set_fact:
+    used_ip4s: "{{  groups['all']
+                    | map('extract', hostvars, 'ansible_all_ipv4_addresses')
+                    | list
+                    | select('defined')
+                    | flatten
+                    | unique }}"
+  run_once: true

@@ -1,43 +1,28 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Assign network IDs to networks unless an address pool is defined or it
-# is the rescue interface.
+# Configure networking on the host. This is executed in serial to avoid
+# IP address collisions.
 #
 ########################################################################
 
-- name: "Use {{net_item['key']}} if it is already configured"
+- name: Configure host networks in serial
+  when: inventory_hostname == host_item
   block:
 
-  # WAN networks are configured with address pools and LAN networks
-  # are configured by VLAN.
+  - name: Configure interfaces
+    ansible.builtin.include_tasks: cfg_iface.yml
+    loop: "{{ phy_ifaces | default([]) }}"
+    loop_control:
+      loop_var: phy_iface_item
 
-  - name: "Network {{net_item['key']}} is already configured"
-    ansible.builtin.assert:
-      that: >
-        net_item['value']['addr'] is defined or
-        net_item['value']['id'] is defined or
-        net_item['key'] == 'rescue'
-      quiet: true
-
-  - name: "Use {{net_item['key']}} as currently configured"
-    ansible.builtin.set_fact:
-      update_nets: "{{  update_nets
-                        | combine({net_item['key']: net[net_item['key']]}) }}"
-
-  rescue:
-
-  - name: Generate random network ID
-    ansible.builtin.set_fact:
-      rand_id: "{{  range(2, 256)
-                    | list
-                    | difference( net_ids | default([]) )
-                    | random(seed=net_item['key']) }}"
-    changed_when: true
-
-  - name: "Assign network ID {{rand_id}} to {{net_item['key']}}"
-    ansible.builtin.set_fact:
-      update_nets: >
-        {{ update_nets | combine({ net_item['key']: net_vals_var}) }}
-    vars:
-      net_vals_var: "{{ net[net_item['key']] | combine({'id': rand_id}) }}"
+  - name: Configure bridges
+    ansible.builtin.include_tasks: cfg_bridge.yml
+    when: bridge_item is defined
+    loop: "{{ phy_ifaces
+              | default([])
+              | selectattr('bridge', 'defined')
+              | map(attribute='bridge')
+              | unique }}"
+    loop_control:
+      loop_var: bridge_item

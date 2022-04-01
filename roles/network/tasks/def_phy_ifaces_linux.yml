@@ -1,0 +1,33 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Build a list of dictionaries for each physical network interface using
+# the ip command in Linux.
+#
+########################################################################
+
+- name: Get interface definitions from ip link
+  ansible.builtin.command:
+    cmd: "ip -json -detail link show {{iface_var}}"
+  become: true
+  changed_when: false
+  register: ip_link_reg
+  loop: "{{ansible_interfaces}}"
+  loop_control:
+    loop_var: iface_var
+
+- name: Parse hardware addresses and device names from ip link on Linux
+  ansible.builtin.set_fact:
+    phy_ifaces_disco: >-
+      {{  phy_ifaces_disco
+          | default([])
+          | union(  [ { 'dev':  link_item['ifname'],
+                        'hw_addr':  link_item['permaddr']
+                                    | default(link_item['address']) } ] ) }}
+  when: link_item['link_type'] == 'ether'
+  loop: "{{ ip_link_reg['results']
+            | map(attribute='stdout')
+            | map('from_json')
+            | flatten }}"
+  loop_control:
+    loop_var: link_item

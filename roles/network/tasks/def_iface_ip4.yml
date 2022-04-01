@@ -1,0 +1,92 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Determine the IP address based on network and group_vars
+#
+# By default, LAN interfaces are configured as 10.site.net.random/24.
+# Collisions are avoided by tracking a list of used IPs. In the case of
+# WAN, a list of usable IPs, a default route and subnet cidr should be
+# provided in the net dict in group_vars. Addresses in the WAN pool are
+# pinged to avoid collisions, so a host on the WAN subnet that is down
+# or doesn't respond to echo requests does pose a collision risk. Please
+# exclude those from the list of addresses in net[name]['addr'].
+#
+########################################################################
+
+- name: A network is defined for the interface
+  when: iface['subnet'] is defined
+        or iface['addrs'] is defined
+        or iface['dhcp4']
+  block:
+
+  # If a subnet is configured to use DHCP, this cannot apply to the
+  # DHCP server itself which needs a static IP address.
+  - name: "{{iface['dev']}} is not configured as a IPv4 DHCP client"
+    vars:
+      srv_var: "{{ 'srv' | default({}) }}"
+    when:
+    - not iface['dhcp4']
+      or iface['subnet'] is defined
+      and iface['subnet'] in srv_var['dhcp4'] | default([])
+    block:
+
+    - name: "{{iface_ip4}} is a valid IPv4 address for {{iface['dev']}}"
+      when:
+      - iface_ip4 != ''
+      - iface_ip4 in iface['addrs'] | default([])
+        or iface['subnet_addr'] is defined
+        and iface['subnet_addr']
+            | ansible.netcommon.network_in_usable(iface_ip4)
+      block:
+
+      - name: "Ensure {{iface_ip4}} is included in the used IPv4 list"
+        ansible.builtin.set_fact:
+          used_ip4s: "{{ used_ip4s | union([iface_ip4]) }}"
+        register: add_ip4_to_used_list_reg
+
+    - name: "Assign an IPv4 address to {{iface['dev']}}"
+      when: add_ip4_to_used_list_reg is skipped
+      block:
+
+      - name: Build list of usable IP addresses
+        ansible.builtin.set_fact:
+          available_ips: "{{  iface['addrs']
+                              | default(  range(  first_ip_int | int,
+                                                  last_ip_int | int )
+                                          | map('ansible.netcommon.ipaddr') )
+                              | difference( used_ip4s | default([]) ) }}"
+        vars:
+          first_ip_int: "{{ iface['subnet_addr']
+                            | ansible.netcommon.ipaddr('next_usable')
+                            | ansible.netcommon.ipaddr('int') }}"
+          last_ip_int: "{{  iface['subnet_addr']
+                            | ansible.netcommon.ipaddr('last_usable')
+                            | ansible.netcommon.ipaddr('int') }}"
+
+      - name: Test public IPs
+        ansible.builtin.shell:
+          cmd: "! ping -c 2 {{ip_item}} 1>/dev/null || echo {{ip_item}}"
+        register: public_ips_in_use_reg
+        changed_when: false
+        loop: "{{ available_ips | ansible.netcommon.ipaddr('public') }}"
+        loop_control:
+          loop_var: ip_item
+
+      - name: Exclude reachable public IPs from usable pool
+        ansible.builtin.set_fact:
+          available_ips: "{{  available_ips
+                              | difference( public_ips_in_use_reg['results']
+                                            | map(attribute='stdout_lines')
+                                            | flatten ) }}"
+        when: not public_ips_in_use_reg is skipped
+
+      - name: "Assign {{ip_var}} to {{iface['dev']}}"
+        ansible.builtin.set_fact:
+          iface_ip4: "{{ip_var}}"
+        vars:
+          ip_var: "{{ available_ips | random(seed=iface['dev']) }}"
+
+      - name: "Sanity check {{iface_ip}}"
+        ansible.builtin.assert:
+          that: iface_ip4 | ansible.netcommon.ipaddr
+          quiet: true

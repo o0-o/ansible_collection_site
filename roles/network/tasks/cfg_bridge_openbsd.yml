@@ -1,0 +1,40 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible:noai
+#
+# Save network bridge configuration to OpenBSD host.
+#
+########################################################################
+
+- name: Define the virtual ethernet interface for the bridge
+  ansible.builtin.set_fact:
+    virt_iface:
+      dev: "vether{{site_subnets[bridge_item]['subnet_id']}}"
+  when: site_subnets[bridge_item]['subnet_id'] != 1
+
+- name: Define the virtual ethernet interface for the bridge
+  ansible.builtin.set_fact:
+    virt_iface:
+      dev: "vether{{site_subnets[bridge_item]['subnet_id']}}"
+      subnet: "{{bridge_item}}"
+  when: site_subnets[bridge_item]['subnet_id'] == 1
+
+# Use iface_item variable here to reuse configure interface tasks
+- name: Configure virtual ethernet interface
+  ansible.builtin.include_tasks: cfg_iface.yml
+  vars:
+    virt_iface_var: "{{virt_iface}}"
+
+- name: Add vether interface to bridge
+  ansible.builtin.set_fact:
+    bridge_members: "{{ bridge_members | union([iface['dev']]) }}"
+
+- name: Save bridge config to host
+  ansible.builtin.template:
+    src: openbsd/hostname.bridge.j2
+    dest: "/etc/hostname.{{bridge_dev}}"
+    owner: root
+    group: wheel
+    mode: 0640
+    backup: yes
+  become: yes
+  notify: restart network

@@ -1,0 +1,18 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Loop through VLANs configured on the current interface and recursively
+# configure them.
+#
+# This is only given a dedicated tasks file because it requires an
+# embedded loop.
+#
+########################################################################
+
+- name: "Define VLAN {{vlan_dev_var}}"
+  ansible.builtin.include_tasks: cfg_iface.yml
+  vars:
+    vlan_num_var: "{{site_subnets[vlan_subnet_item]['subnet_id']}}"
+    vlan_dev_var: "{{ 'vlan' + vlan_num_var | string }}"
+    vlan_var: "{{ { 'dev': vlan_dev_var,
+                    'subnet': vlan_subnet_item } }}"

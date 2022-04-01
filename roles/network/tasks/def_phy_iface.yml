@@ -1,0 +1,166 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Build and validate the interface definition.
+#
+########################################################################
+
+- name: Define the hardware address using Unix format (xx:xx:xx:xx:xx:xx:)
+  ansible.builtin.set_fact:
+    iface: "{{  phy_iface_item
+                | combine(  { 'hw_addr': hw_addr_var } ) }}"
+  vars:
+    hw_addr_var: "{{  phy_iface_item['hw_addr']
+                      | ansible.netcommon.hwaddr('linux') }}"
+  when: phy_iface_item['hw_addr'] is defined
+
+- name: Define the interface device name (lower case)
+  ansible.builtin.set_fact:
+    iface: "{{  iface
+                | default(phy_iface_item)
+                | combine({'dev': dev_var}) }}"
+  vars:
+    dev_var: "{{ phy_iface_item['dev'] | lower }}"
+  when: phy_iface_item['dev'] is defined
+
+- name: An interface must have a valid device name or hardware address
+  ansible.builtin.assert:
+    that:
+    - iface is defined
+    - iface['dev'] in ansible_interfaces
+      or  phy_ifaces_disco
+          | selectattr('dev', '==', iface['dev'])
+          != []
+
+- name: The device name is defined
+  when: phy_iface_item['dev'] is defined
+  block:
+
+  - name: The device name is valid (detected on the host)
+    ansible.builtin.assert:
+      that: iface['dev'] in ansible_interfaces
+      quiet: true
+      fail_msg: >-
+        The network interface {{iface['dev']}} was not found on the host.
+        Detected interfaces are {{ ansible_interfaces | join(', ') }}.
+
+  - name: The device name still correlates to the configured MAC address
+    ansible.builtin.assert:
+      that: iface['hw_addr'] == phy_iface_disco_var['hw_addr']
+      quiet: true
+#      fail_msg: >-
+#        The network interface {{iface['dev']}} is valid but no longer
+#        corresponds to the hardware address {{iface['hw_addr']}}. The
+#        correct address appears to be {{phy_iface_disco_var['hw_addr']}}.
+    vars:
+      phy_iface_disco_var: >
+        {{ phy_ifaces_disco
+            | selectattr('dev', '==', iface['dev'])
+            | first }}
+    when: iface['hw_addr'] is defined
+
+  - name: Define the hardware address of the interface
+    ansible.builtin.set_fact:
+      iface: "{{ iface | combine(phy_iface_disco_var) }}"
+    vars:
+      phy_iface_disco_var: >
+        {{  phy_ifaces_disco
+            | selectattr('dev', '==', iface['dev'])
+            | first }}
+    when: iface['hw_addr'] is undefined
+
+- name: The hardware address is defined
+  when: phy_iface_item['hw_addr'] is defined
+  block:
+
+  - name: The hardware address is valid (detected on the host)
+    ansible.builtin.assert:
+      that: iface['hw_addr'] in hw_addrs_var
+      quiet: true
+      fail_msg: >-
+        The network interface {{iface['hw_addr']}} was not found on the host.
+        Detected interfaces are {{ hw_addrs_var | join(', ') }}.
+    vars:
+      hw_addrs_var: "{{ phy_ifaces_disco | map(attribute='hw_addr') }}"
+
+  - name: Define the device name of the interface
+    ansible.builtin.set_fact:
+      iface: "{{  iface | combine(phy_iface_disco_var) }}"
+    vars:
+      phy_iface_disco_var: >
+        {{  phy_ifaces_disco
+            | selectattr('hw_addr', '==', iface['hw_addr'])
+            | first }}
+    when: iface['dev'] is undefined
+
+- name: If initializing the interfaces, discover the current configuration
+  when:
+  - phy_ifaces is undefined
+  - ansible_facts[iface['dev']]['ipv4'] is defined
+  - ansible_facts[iface['dev']]['ipv4'] != []
+  block:
+
+  - name: Define the current IP address
+    ansible.builtin.set_fact:
+      iface_ip4: "{{ip_var}}"
+    vars:
+      ip_var: >-
+        {{  ansible_facts[iface['dev']]['ipv4'][0]['address']
+            | default( ansible_facts[ iface['dev'] ]['ipv4']['address'] ) }}
+
+  # TODO: check interface config to see if DHCP is configured instead
+  # of using leases as an indicator.
+  - name: Check if a DHCP lease exists for the IP
+    ansible.builtin.command:
+      cmd: "grep -Fqr '{{iface_ip4}}' {{dhcp_client_lease_path}}"
+    register: dhcp_lease_reg
+    failed_when: false
+    changed_when: false
+    become: true
+
+  # Avoid configuration that will change the current DHCP assignment
+  # (like randomized MAC or DUID)
+  - name: The interfaces is configured to use DHCP
+    ansible.builtin.set_fact:
+      iface: "{{  iface
+                  | combine(  { 'dhcp4': true,
+                                'rand_mac': false } ) }}"
+    when: dhcp_lease_reg['rc'] == 0
+
+  - name: The interface address is configured manually
+    when: dhcp_lease_reg['rc'] > 0
+    block:
+
+    - name: Define the static address
+      ansible.builtin.set_fact:
+        iface: "{{  iface
+                    | combine(  { 'addrs': [iface_ip4],
+                                  'prefix4': prefix_var } ) }}"
+      vars:
+        prefix_var: >-
+          {{  ( iface_ip4
+                + '/'
+                + ansible_facts[ iface['dev'] ]['ipv4'][0]['netmask']
+                  | default(
+                      ansible_facts[ iface['dev'] ]['ipv4']['netmask'] ) )
+              | ansible.netcommon.ipaddr('prefix') }}
+
+    - name: Define default route
+      ansible.builtin.set_fact:
+        iface: "{{  iface
+                    | combine(  { 'routes': [ { 'dest': '0.0.0.0/0',
+                                                'hop': hop_var } ] } ) }}"
+      vars:
+        hop_var: "{{ansible_default_ipv4['gateway']}}"
+      when: ansible_default_ipv4['address'] == iface_ip4
+
+- name: If one address exists for the interface, convert it to a list
+  ansible.builtin.set_fact:
+    iface: "{{ iface | combine( { 'addrs': [ iface['addrs'] ] } ) }}"
+  when:
+  - iface['addrs'] is defined
+  - iface['addrs'] | type_debug != 'list'
+
+- name: Update interface list
+  ansible.builtin.set_fact:
+    new_phy_ifaces: "{{ new_phy_ifaces | default([]) | union([iface]) }}"

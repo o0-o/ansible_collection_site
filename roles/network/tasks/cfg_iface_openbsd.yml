@@ -5,10 +5,10 @@
 #
 ########################################################################
 
-- name: "Configure /etc/hostname.{{current_iface['dev']}}"
+- name: "Configure /etc/hostname.{{iface['dev']}}"
   ansible.builtin.template:
-    src: hostname.iface.j2
-    dest: "/etc/hostname.{{current_iface['dev']}}"
+    src: openbsd/hostname.iface.j2
+    dest: "/etc/hostname.{{iface['dev']}}"
     owner: root
     group: wheel
     mode: 0640

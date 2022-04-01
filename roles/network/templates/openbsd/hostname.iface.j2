@@ -9,43 +9,40 @@ pf tables are also configured.
 {{	default_comment_header
 	| comment(	prefix=default_comment_prefix | default(),
 			postfix=default_comment_postfix | default() ) }}
-
-description "{{	current_iface['description']
-		| default(	current_net['description']
-				| default() ) }}"
-{% if current_carp is defined %}
+{% if iface['description'] is defined %}
+description "{{iface['description']}}"
+{% endif %}
+{% if iface['type'] == 'carp' %}
 
 # CARP
-vhid {{current_iface['vhid']}}
+vhid {{iface['vhid']}}
 pass {{carp_pass}}
-carpdev {{ current_vlan['dev'] | default(iface_item['dev']) }}
+carpdev {{ vlan_var['dev'] | default(phy_iface_item['dev']) }}
 advskew {{advskew}}
 {% endif %}
-{% if current_vlan is defined and current_carp is undefined %}
+{% if iface['type'] =='vlan' %}
 
 # VLAN
-vnetid {{current_net['id']}} parent {{iface_item['dev']}}
+vnetid {{iface['subnet_id']}} parent {{phy_iface_item['dev']}}
 {% endif %}
 
-# Bring Up {{current_iface['dev']}}
+# Bring Up {{iface['dev']}}
 up
-{% if	current_carp is undefined and
-	current_vlan is undefined and
-	current_mtu | int != 1500 %}
-mtu {{current_mtu}}
+{% if iface['type'] == 'phy' %}
+mtu {{iface['mtu']}}
 {% endif %}
 
 # Addresses
-{% if current_iface['random_mac'] | default(true) %}
+{% if iface['rand_mac'] %}
 lladdr random
 {% endif %}
-{% if current_iface['net'] is defined %}
-{% if not current_iface_ip in ['dhcp', ''] %}
-inet {{current_iface_ip}}/{{current_mask}}
-{% elif current_iface_ip == 'dhcp' %}
+{% if iface['dhcp4'] %}
 dhcp
+{% elif iface_ip4 != '' %}
+inet {{iface_ip4}}/{{iface['prefix4']}}
 {% endif %}
-group {{current_iface['net']}}
+{% if iface['subnet'] is defined %}
+group {{iface['subnet']}}
 {% endif %}
 
 {#
@@ -54,13 +51,11 @@ All routing interfaces should be configured with CARP, so we limit
 route configuration to CARP interfaces.
 
 #}
-{% if	current_net['route'][0] is defined and
-	(	current_carp is defined or
-		current_iface['net'] == 'rescue' ) %}
+{% if iface['routes'][0] is defined %}
 
 # Route
-{% for route in current_net['route'] %}
-!route add {{route['dest']}} {{route['hop'][0]}}
+{% for route in iface['routes'] %}
+!route add {{route['dest']}} {{route['hop']}}
 {% endfor %}
 {% endif %}
 
@@ -69,19 +64,16 @@ route configuration to CARP interfaces.
 All LAN networks must be /24 to support the 10.X.Y.Z schema
 
 #}
-{% if current_net['client'] is defined and current_carp is undefined %}
+{% if iface['client'] is defined and iface['type'] != 'carp' %}
 
 # PF Tables
-{% for pf_table in current_net['client'] %}
+{% for pf_table in net['client'] %}
 {#- All connected networks are added to the client tables -#}
-!pfctl -t {{pf_table}}-c -T add {{current_net_addr}}
-{% for route in current_net['route'] | default([]) %}
+!pfctl -t {{pf_table}}-c -T add {{iface['subnet_addr']}}
+{% for route in iface['routes'] | default([]) %}
 !pfctl -t {{pf_table}}-c -T add {{route['dest']}}
 {% endfor %}
 {% endfor %}
-{% elif current_carp is defined %}
-
-# PF Tables
-!pfctl -t carp -T add {{	current_vlan['dev']
-				| default(iface_item['dev']) }}
+{% elif iface['type'] == 'carp' %}
+!pfctl -t carp -T add {{ vlan_var['dev'] | default(phy_iface_item['dev']) }}
 {% endif %}

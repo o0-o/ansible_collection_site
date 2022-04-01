@@ -1,0 +1,30 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Configure the networkd service on Linux and disable NetworkManager if
+# it is enabled.
+#
+########################################################################
+
+- name: Configure networkd
+  notify: update service facts
+  block:
+
+  - name: Start and enable systemd-networkd.service
+    ansible.builtin.service:
+      name: systemd-networkd.service
+      state: started
+      enabled: true
+    become: true
+
+  - name: Stop and disable NetworkManager.service
+    ansible.builtin.service:
+      name: NetworkManager.service
+      state: stopped
+      enabled: false
+    become: true
+    vars:
+      nm_status_var: >-
+        {{  services['NetworkManager.service']['status']
+            | default('not-found') }}
+    when: nm_status_var != 'not-found'

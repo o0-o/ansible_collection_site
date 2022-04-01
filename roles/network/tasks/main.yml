@@ -5,79 +5,29 @@
 #
 ########################################################################
 
-- name: Initialize empty updated interface list
-  ansible.builtin.set_fact:
-    update_iface: []
+- name: Define the network
+  ansible.builtin.include_tasks: defs.yml
 
-# Loops are not supported on blocks, so we must delegate to a task
-- name: Get or verify device names for interfaces with MAC addresses
-  ansible.builtin.include_tasks: get_dev_from_mac.yml
-  loop: "{{ ifaces | default([]) }}"
-  loop_control:
-    loop_var: iface_item
-    index_var: iface_index
-
-- name: Use updated interface definitions
-  ansible.builtin.set_fact:
-    iface: "{{update_ifaces}}"
-  changed_when: true
-  when: iface | default([]) != update_iface | default([])
-  notify: save host vars
-
-# LAN addressing scheme follows: 10.site.subnet.host. Subnets are
-# randomly assigned between 2 and 255 (correlating to VLANs).
-
-# To assign VLANs to new or unconfigured networks, we need a list of
-# currently used network IDs to avoid collisions.
-- name: Get list of used network IDs
-  set_fact:
-    net_ids: "{{ net_ids | default([]) | union([net_item['id']]) }}"
-  when:
-  - net_item['id'] is defined
-  - net_item['id'] | default() not in [0, 1] #0 and 1 reserved
-  loop: "{{ nets | dict2items | flatten(levels=1) }}"
-  loop_control:
-    loop_var: net_item
-
-- name: Initialize empty updated network dictionary
-  ansible.builtin.set_fact:
-    update_nets: {}
-
-- name: Configure networks
+- name: Configure the network
   ansible.builtin.include_tasks: cfg_net.yml
-  loop: "{{ nets | default({}) | dict2items | flatten(levels=1) }}"
+  loop: "{{ansible_play_hosts}}"
   loop_control:
-    loop_var: net_item
+    loop_var: host_item
 
-- name: Sanity check new network definitions
-  ansible.builtin.assert:
-    that: nets | default({}) | length == update_nets | default({}) | length
-    quiet: true
+- name: Flush handlers to bring up any newly configured interfaces
+  ansible.builtin.meta: flush_handlers
 
-- name: Use updated network definitions
-  ansible.builtin.set_fact:
-    nets: "{{update_nets}}"
-  changed_when: true
-  when: nets | default({}) != update_nets | default({})
-  notify: save net vars
-
-- name: Configure interfaces
-  ansible.builtin.include_tasks: cfg_iface.yml
-  loop: "{{ifaces | default([]) }}"
-  loop_control:
-    loop_var: iface_item
-
-- name: Configure bridges
-  ansible.builtin.include_tasks: cfg_bridge.yml
-  when: bridge_item is defined
-  loop: "{{ ifaces
-            | default([])
-            | selectattr('bridge', 'defined')
-            | map(attribute='bridge')
-            | unique }}"
-  loop_control:
-    loop_var: bridge_item
+# Currently only Linux, but still use first_found to avoid hard coding
+# any platforms in the main tasks file.
+- name: Configure network control services
+  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  vars:
+    files_var:
+      files:
+      - "cfg_net_ctl_{{ansible_system}}.yml"
+      - /dev/null
+      paths:
+      - tasks/
 
 - name: Configure hostname
   ansible.builtin.include_tasks: cfg_hostname.yml
-  when: iface is defined

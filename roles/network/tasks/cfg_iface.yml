@@ -14,71 +14,85 @@
 #
 ########################################################################
 
-- name: Set variables for interface configuration
-  ansible.builtin.include_tasks: set_iface_vars.yml
-
-- name: "The MTU of {{current_iface['dev']}} is {{mtu_var}}"
-  set_fact:
-    current_mtu: "{{mtu_var}}"
-  vars:
-    mtu_var: "{{ [  current_mtu | default(1500) | int,
-                    current_net['mtu'] | default(1500) | int ] | max }}"
+- name: Define the interface
+  ansible.builtin.include_tasks: def_iface.yml
 
 # CARP gets address precedence in case only 1 IP address is available.
-- name: Configure CARP
-  ansible.builtin.include_tasks: cfg_carp.yml
-  register: cfg_carp
-  when:
-    - current_iface['carp'] | default(false)
-    - ansible_system | lower in ['openbsd', 'freebsd']
+- name: "Configure CARP interface {{carp_var['dev']}}"
+  ansible.builtin.include_tasks: cfg_iface_carp.yml
+  register: cfg_carp_reg
   vars:
-    carp_var: "{{ { 'dev': 'carp' + current_net['id'] | default() | string,
-                    'net': current_iface['net'] | default(),
-                    'vhid': current_net['id'] | default() } }}"
+    carp_var: "{{ { 'dev': 'carp' + iface['subnet_id'] | string,
+                    'subnet': iface['subnet'],
+                    'vhid': iface['subnet_id'] } }}"
+  when:
+  - ansible_system | lower in ['openbsd', 'freebsd']
+  - iface['subnet'] is defined
+  - iface['carp'] | default(false)
 
 - name: Reset variables after CARP configuration
-  ansible.builtin.include_tasks: set_iface_vars.yml
-  when: not cfg_carp['skipped']
+  ansible.builtin.include_tasks: def_iface.yml
+  when: iface['type'] == 'carp'
 
-- block:
+- name: "Configure VLANS on {{iface['dev']}}"
+  ansible.builtin.include_tasks: cfg_iface_vlan.yml
+  loop: "{{ iface['vlans'] | default([]) }}"
+  loop_control:
+    loop_var: vlan_subnet_item
 
-  - name: "{{current_iface['dev']}} has VLANs"
-    ansible.builtin.assert:
-      that: current_iface['vlan'] is defined
-      quiet: true
+- name: Reset variables after VLAN configuration
+  ansible.builtin.include_tasks: def_iface.yml
+  when: iface['type'] == 'vlan'
 
-  - name: Configure VLANS
-    ansible.builtin.include_tasks: cfg_vlan.yml
+# Need to run this serially to avoid IP collisions
+- name: "Define the IP address for interface {{iface['dev']}}"
+  ansible.builtin.include_tasks: def_iface_ip4.yml
 
-  - name: Reset variables after VLAN configuration
-    ansible.builtin.include_tasks: set_iface_vars.yml
-
-  rescue:
-
-  - name: "{{current_iface['dev']}} does not have VLANS"
-    ansible.builtin.assert:
-      that: current_iface['vlan'] is undefined
-      quiet: true
-
-- name: "Set the IP address of {{current_iface['dev']}}"
-  ansible.builtin.include_tasks: set_ip.yml
-
-- name: "Save {{current_iface['dev']}} configuration to {{inventory_hostname}}"
+- name: Run platform-specific interface configuration tasks
   ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
   vars:
+    prefix_var: cfg_iface_
+    suffix_var: .yml
     files_var:
       files:
-      - "save_iface_cfg_{{ ansible_distribution| lower }}-\
-        {{ ansible_distribution_version | lower() }}.yml"
-      - "save_iface_cfg_{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}.yml"
-      - "save_iface_cfg_{{ ansible_distribution | lower }}.yml"
-      - "save_iface_cfg_{{ ansible_system | lower }}.yml"
-      - "save_iface_cfg_{{ ansible_os_family | lower }}.yml"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower() }}_\
+        {{ net_ctl_srv | default }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_version | lower() }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}_\
+        {{ net_ctl_srv | default }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}-\
+        {{ ansible_distribution_major_version | default('') | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}_\
+        {{ net_ctl_srv | default }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_distribution | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_os_family | lower }}_\
+        {{ net_ctl_srv | default }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_os_family | lower }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_system | lower }}_\
+        {{ net_ctl_srv | default }}\
+        {{suffix_var}}"
+      - "{{prefix_var}}\
+        {{ ansible_system | lower }}\
+        {{suffix_var}}"
       paths:
       - tasks/
-
-- name: Reset MTU after configuring physical interface
-  set_fact:
-    current_mtu: 1500
-  when: vlan_item is undefined

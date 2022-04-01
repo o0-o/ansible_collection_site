@@ -1,0 +1,34 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Build and validate the subnet defintion.
+#
+########################################################################
+
+- name: Define the subnet
+  ansible.builtin.set_fact:
+    subnet: "{{ site_subnets[subnet_name_item] }}"
+
+- name: If a single IP address is provided, ensure it is a list of one
+  ansible.builtin.set_fact:
+    subnet: "{{ subnet | combine({'addrs': [subnet['addrs']]}) }}"
+  when:
+  - subnet['addr'] is defined
+  - subnet['addr'] | debug_type == 'str'
+
+# Idempotent if networks are defined in the same order
+- name: Assign random network ID to the network if one doesn't already exist
+  ansible.builtin.set_fact:
+    subnet: "{{ subnet | combine({'subnet_id': rand_id_var}) }}"
+  when: site['id'] is undefined
+  vars:
+    rand_id_var: "{{  range(2, 256)
+                      | list
+                      | difference( subnet_ids | default([]) )
+                      | random(seed=subnet_name_item) }}"
+
+- name: Update site networks list
+  ansible.builtin.set_fact:
+    new_site_subnets: "{{ new_site_subnets
+                          | default({})
+                          | combine({subnet_name_item: subnet}) }}"
