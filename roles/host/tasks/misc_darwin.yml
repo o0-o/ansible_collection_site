@@ -1,0 +1,24 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Perform miscellaneous macOS configuration.
+#
+########################################################################
+
+# Ansible fails to collect certain hardware information on macOS
+- name: Get system hardware information (macOS)
+  ansible.builtin.command:
+    cmd: system_profiler -json SPHardwareDataType
+  changed_when: false
+  register: sys_prof_hw_reg
+
+- name: Define missing Ansible hardware facts (macOS)
+  ansible.builtin.set_fact:
+    ansible_system_vendor: 'Apple Inc.'
+    ansible_product_version: "{{  ansible_product_name
+                                  | regex_replace('^[A-Za-z]*', '') }}"
+    ansible_product_uuid: "{{ hw_var['platform_UUID'] }}"
+    ansible_product_serial: "{{ hw_var['serial_number'] }}"
+  vars:
+    hw_var: "{{ ( sys_prof_hw_reg['stdout']
+                  | from_json )['SPHardwareDataType'][0] }}"
