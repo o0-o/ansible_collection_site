@@ -1,28 +1,41 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Configure networking on the host. This is executed in serial to avoid
-# IP address collisions.
+# Configure networking
+#
+# NOTE: Serial execution allows us to include host variables in task
+# names. Doing so greatly increases visibility into the state of the
+# play as it executes, especially in the case of cfg_iface.yml which is
+# both in a loop and called recursively.
 #
 ########################################################################
 
+# Simulate serial execution by looping through each host. This is
+# necessary to prevent address collisions during IPv4 assignment.
 - name: Configure host networks in serial
   when: inventory_hostname == host_item
   block:
 
-  - name: Configure interfaces
-    ansible.builtin.include_tasks: cfg_iface.yml
-    loop: "{{ phy_ifaces | default([]) }}"
-    loop_control:
-      loop_var: phy_iface_item
+    # Configure interfaces by looping through the physical interfaces on
+    # the host. The cfg_iface.yml file will call itself recursively to
+    # configure child interfaces such as VLANs and CARP.
+    - name: Configure interfaces
+      ansible.builtin.include_tasks: cfg_iface.yml
+      vars:
+        type_var:
+          type: phy
+      loop: "{{ phy_ifaces | map('combine', type_var) }}"
+      loop_control:
+        loop_var: phy_iface_item
 
-  - name: Configure bridges
-    ansible.builtin.include_tasks: cfg_bridge.yml
-    when: bridge_item is defined
-    loop: "{{ phy_ifaces
-              | default([])
-              | selectattr('bridge', 'defined')
-              | map(attribute='bridge')
-              | unique }}"
-    loop_control:
-      loop_var: bridge_item
+    # Configure bridges. Currently only supported on OpenBSD, the
+    # software bridge and corresponding vether interface are configured.
+    - name: Configure bridges
+      ansible.builtin.include_tasks: cfg_bridge.yml
+      when: bridge_net_item is defined
+      loop: "{{ phy_ifaces
+                | selectattr('bridge', 'defined')
+                | map(attribute='bridge')
+                | unique }}"
+      loop_control:
+        loop_var: bridge_net_item

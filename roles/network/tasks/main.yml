@@ -1,16 +1,27 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Configure networks, interfaces and hostname
+# Configure subnets, interfaces and hostname
 #
 ########################################################################
+
+- name: The network role should only be run on one site at a time
+  ansible.builtin.assert:
+    that: "{{ ansible_play_hosts
+              | map('extract', hostvars, 'site_group')
+              | list
+              | flatten
+              | unique
+              | length
+              == 1 }}"
+    quiet: true
 
 - name: Define the network
   ansible.builtin.include_tasks: defs.yml
 
 - name: Configure the network
   ansible.builtin.include_tasks: cfg_net.yml
-  loop: "{{ansible_play_hosts}}"
+  loop: "{{ ansible_play_hosts }}"
   loop_control:
     loop_var: host_item
 
@@ -20,14 +31,14 @@
 # Currently only Linux, but still use first_found to avoid hard coding
 # any platforms in the main tasks file.
 - name: Configure network control services
-  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
   vars:
     files_var:
       files:
-      - "cfg_net_ctl_{{ansible_system}}.yml"
-      - /dev/null
+        - "cfg_net_ctl_{{ ansible_system }}.yml"
+        - /dev/null
       paths:
-      - tasks/
+        - tasks/
 
 - name: Configure hostname
   ansible.builtin.include_tasks: cfg_hostname.yml

@@ -1,58 +1,59 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Configure an interface on Linux with networkd.
+# Configure an interface on Linux with networkd
+#
+# Documentation on networkd configuration files can be found here:
+# https://freedesktop.org/software/systemd/man/systemd.netdev.html
+# https://freedesktop.org/software/systemd/man/systemd.link.html
+# https://freedesktop.org/software/systemd/man/systemd.network.html
 #
 ########################################################################
 
-- name: "Configure the {{iface['dev']}} networkd netdev file"
+- name: "Configure {{ netdev_path_var }}"
   ansible.builtin.template:
     src: networkd/iface.netdev.j2
-    dest: "{{netdev_var}}"
+    dest: "{{ netdev_path_var }}"
     owner: root
     group: root
     mode: 0644
     backup: true
   become: true
   vars:
-    netdev_var: "/etc/systemd/network/00_{{iface['dev']}}.netdev"
+    netdev_path_var: "/etc/systemd/network/00_{{ iface['dev'] }}.netdev"
   when: iface['type'] == 'vlan'
-  notify: restart network
+  notify: restart network (networkd)
 
-- name: "Configure the {{iface['dev']}} networkd link file"
+- name: "Configure {{ link_path_var }}"
   ansible.builtin.template:
     src: networkd/iface.link.j2
-    dest: "{{link_var}}"
+    dest: "{{ link_path_var }}"
     owner: root
     group: root
     mode: 0644
     backup: true
   become: true
   vars:
-    link_var: "\
-      /etc\
-      /systemd\
-      /network\
-      /00_{{  iface['hw_addr']
-              | default(iface['dev'])
-              | regex_replace(':', '-') }}.link"
-  notify: restart network
+    link_file_var: "00_{{ iface['hw_addr']
+                          | default(iface['dev'])
+                          | regex_replace(':', '-') }}.link"
+    link_path_var: "/etc/systemd/network/{{ link_file_var }}"
+  notify: restart network (networkd)
 
-- name: "Configure the {{iface['dev']}} networkd network file"
+# NOTE: IAID must be defined as an integer in the network file.
+- name: "Configure {{ net_path_var }}"
   ansible.builtin.template:
     src: networkd/iface.network.j2
-    dest: "{{net_var}}"
+    dest: "{{ net_path_var }}"
     owner: root
     group: root
     mode: 0644
     backup: true
   become: true
   vars:
-    net_var: "\
-      /etc\
-      /systemd\
-      /network\
-      /00_{{  iface['hw_addr']
-              | default(iface['dev'])
-              | regex_replace(':', '-') }}.network"
-  notify: restart network
+    net_file_var: "00_{{  iface['hw_addr']
+                          | default(iface['dev'])
+                          | regex_replace(':', '-') }}.network"
+    net_path_var: "/etc/systemd/network/{{ net_file_var }}"
+    iaid_int_var: "{{ iface['iaid'] | regex_replace(':','') | int(base=16) }}"
+  notify: restart network (networkd)

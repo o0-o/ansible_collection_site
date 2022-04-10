@@ -6,25 +6,53 @@
 #
 ########################################################################
 
-- name: Configure networkd
+- name: Configure DHCP in networkd.conf
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/networkd.conf
+    line: '[DHCP]'
+    insertbefore: EOF
+    backup: true
+  become: true
+
+- name: Configure DUID type in networkd.conf
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/networkd.conf
+    regexp: '^#?DUIDType='
+    line: 'DUIDType=uuid'
+    insertafter: '[DHCP]'
+    backup: true
+  become: true
+
+- name: Configure DUID raw data in networkd.conf
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/networkd.conf
+    regexp: '^#?DUIDRawData='
+    line: "DUIDRawData={{ duid_uuid }}"
+    insertafter: 'DUIDType=UUID'
+    backup: true
+  become: true
+
+- name: Configure the services
   notify: update service facts
   block:
 
-  - name: Start and enable systemd-networkd.service
-    ansible.builtin.service:
-      name: systemd-networkd.service
-      state: started
-      enabled: true
-    become: true
+    - name: Start and enable systemd-networkd.service
+      ansible.builtin.service:
+        name: systemd-networkd.service
+        state: started
+        enabled: true
+      become: true
 
-  - name: Stop and disable NetworkManager.service
-    ansible.builtin.service:
-      name: NetworkManager.service
-      state: stopped
-      enabled: false
-    become: true
-    vars:
-      nm_status_var: >-
-        {{  services['NetworkManager.service']['status']
-            | default('not-found') }}
-    when: nm_status_var != 'not-found'
+    - name: Stop and disable NetworkManager.service
+      ansible.builtin.service:
+        name: NetworkManager.service
+        state: stopped
+        enabled: false
+      become: true
+      vars:
+        nm_status_var: >-
+          {{  services['NetworkManager.service']['status']
+              | default('not-found') }}
+      when: nm_status_var != 'not-found'
+
+    # TODO: uninstall NetworkManager

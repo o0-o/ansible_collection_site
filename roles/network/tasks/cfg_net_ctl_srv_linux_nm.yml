@@ -10,21 +10,21 @@
   notify: update service facts
   block:
 
-  - name: Start and enable NetworkManager.service
-    ansible.builtin.service:
-      name: NetworkManager.service
-      state: started
-      enabled: true
-    become: true
+    - name: Start and enable NetworkManager.service
+      ansible.builtin.service:
+        name: NetworkManager.service
+        state: started
+        enabled: true
+      become: true
 
-  - name: Stop and disable systemd-networkd.service
-    ansible.builtin.service:
-      name: systemd-networkd.service
-      state: stopped
-      enabled: false
-    become: true
-    vars:
-      netd_status_var: >-
-        {{  services['systemd-networkd.service']['status']
-            | default('not-found') }}
-    when: netd_status_var != 'not-found'
+    - name: Stop and disable systemd-networkd.service
+      ansible.builtin.service:
+        name: systemd-networkd.service
+        state: stopped
+        enabled: false
+      become: true
+      vars:
+        netd_status_var: >-
+          {{  services['systemd-networkd.service']['status']
+              | default('not-found') }}
+      when: netd_status_var != 'not-found'

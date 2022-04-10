@@ -13,80 +13,183 @@
 #
 ########################################################################
 
-- name: A network is defined for the interface
-  when: iface['subnet'] is defined
-        or iface['addrs'] is defined
-        or iface['dhcp4']
+# Apply default subnet prefix of 24 unless using an address pool.
+# Address pools do not have a default subnet prefix (an address pool
+# in the absence of a prefix will fail).
+- name: >-
+    Interface {{ iface['dev'] }} has an IPv4 subnet prefix of
+    {{ subnet_prefix_var }}
+  ansible.builtin.set_fact:
+    iface: "{{ iface | combine( { 'prefix4': subnet_prefix_var } ) }}"
+  vars:
+    subnet_prefix_var: 24
+  when:
+    - iface['subnet'] is defined
+
+# Define the CIDR network address of the interface. If present, the
+# address pool takes precedence, then subnet.
+- name: >-
+    The network address for interface {{ iface['dev'] }} is
+    {{ subnet_addr_var }}
+  ansible.builtin.set_fact:
+    iface: "{{  iface
+                | combine(  { 'subnet_addr':  subnet_addr_var } ) }}"
+  vars:
+    default_ip4_net_var: "{{  '10.'
+                              + site['id'] | string
+                              + '.'
+                              + iface['subnet_id'] | default('1')
+                              + '.0' }}"
+    ipv4_addr_pool_var: "{{ iface['addr_pool']
+                            | default([])
+                            | ansible.netcommon.ipv4 }}"
+    subnet_addr_var: "{{  ( ipv4_addr_pool_var[0]
+                            | default(default_ip4_net_var)
+                            + '/'
+                            + iface['prefix4'] | string )
+                          | ansible.netcommon.ipaddr('subnet') }}"
+
+# If a valid address currently exists, use it.
+- name: >-
+    Interface {{ iface['dev'] }} is assigned an IPv4 address of {{ ip_var }}
+    in subnet {{ iface['subnet'] }}
+  ansible.builtin.set_fact:
+    iface: "{{ iface | combine( { 'ip4': ip_var } ) }}"
+  vars:
+    subnet_var: "{{ iface['subnet'] }}"
+    id_var: "{{ iface['dhcp_client_id'] }}"
+    ip_var: "{{ site_ips[subnet_var][id_var]['ip4'] | default }}"
+  when:
+    - iface['subnet'] is defined
+    - site_ips[subnet_var][id_var]['ip4'] is defined
+
+- name: >-
+    Interface {{ iface['dev'] }} has an IPv4 address of {{ ip_var }} which is
+    within its address pool
+  ansible.builtin.set_fact:
+    iface: "{{ iface | combine( { 'ip4': ip_var } ) }}"
+  vars:
+    iface_var: "{{ vars[ 'ansible_' + iface['dev']] | default }}"
+    ip_var: "{{ iface_var['ipv4'][0]['address']
+                | default(iface_var['ipv4']['address'])
+                | default }}"
+  when:
+    - iface['ip4'] is undefined
+    - iface['addr_pool'] is defined
+    - ip_var is in iface['addr_pool']
+
+# Assign a random IPv4 address to the interface within the address pool
+# or parameters of the subnet.
+- name: "Assign an IPv4 address to {{ iface['dev'] }}"
+  when: iface['ip4'] is undefined
   block:
 
-  # If a subnet is configured to use DHCP, this cannot apply to the
-  # DHCP server itself which needs a static IP address.
-  - name: "{{iface['dev']}} is not configured as a IPv4 DHCP client"
-    vars:
-      srv_var: "{{ 'srv' | default({}) }}"
-    when:
-    - not iface['dhcp4']
-      or iface['subnet'] is defined
-      and iface['subnet'] in srv_var['dhcp4'] | default([])
-    block:
+    # The IPv4 address schema for a subnet is 10.site.subnet.host.
+    # Corresponding ID numbers for site and subnet are used in the 2nd
+    # and 3rd octet. A host address is randomly selected for the 4th
+    # octet.
 
-    - name: "{{iface_ip4}} is a valid IPv4 address for {{iface['dev']}}"
-      when:
-      - iface_ip4 != ''
-      - iface_ip4 in iface['addrs'] | default([])
-        or iface['subnet_addr'] is defined
-        and iface['subnet_addr']
-            | ansible.netcommon.network_in_usable(iface_ip4)
+    # We use the integer representation of the IP address so that we can
+    # use range to enumerate all usable host addresses which is then
+    # differenced against the used IP list and finally a random IP is
+    # chosen. However, if an address pool is present, an IPv4 address is
+    # chosen at random from that list instead.
+    - name: "An IPv4 address has been selected at random"
+      ansible.builtin.set_fact:
+        ip4_candidate: "{{ ip_var }}"
+      vars:
+        first_ip_int_var: "{{ iface['subnet_addr']
+                              | ansible.netcommon.ipv4('next_usable')
+                              | ansible.netcommon.ipv4('int') }}"
+        last_ip_int_var: "{{  iface['subnet_addr']
+                              | ansible.netcommon.ipv4('last_usable')
+                              | ansible.netcommon.ipv4('int') }}"
+        available_ips_var: "{{  iface['addr_pool']
+                                | default(  range(  first_ip_int_var | int,
+                                                    last_ip_int_var | int )
+                                            | list )
+                                | ansible.netcommon.ipv4
+                                | difference( used_ip4s | default([]) ) }}"
+        ip_var: "{{ available_ips_var | random }}"
+
+    # Ping the chosen address from both host and localhost. If either
+    # receive any response, add the IP to the used IPv4 list and include
+    # this file recursively. Repeat until a valid IP is found or all
+    # available IPs are exhausted.
+    - name: Address collision tests (will re-attempt on failure)
       block:
 
-      - name: "Ensure {{iface_ip4}} is included in the used IPv4 list"
-        ansible.builtin.set_fact:
-          used_ip4s: "{{ used_ip4s | union([iface_ip4]) }}"
-        register: add_ip4_to_used_list_reg
+        # NOTE: ping on some platforms format 100%, others 100.0%
+        - name: "Ping {{ ip4_candidate }} from the host (collision test)"
+          ansible.builtin.command:
+            argv:
+              - ping
+              - -c
+              - 2
+              - "{{ ip4_candidate }}"
+          register: host_ping_reg
+          changed_when: false
+          failed_when: not  host_ping_reg['stdout']
+                            | regex_search('100.*% packet loss')
 
-    - name: "Assign an IPv4 address to {{iface['dev']}}"
-      when: add_ip4_to_used_list_reg is skipped
-      block:
+        - name: "Ping {{ ip4_candidate }} from localhost (collision test)"
+          ansible.builtin.command:
+            argv:
+              - ping
+              - -c
+              - 2
+              - "{{ ip4_candidate }}"
+          register: localhost_ping_reg
+          changed_when: false
+          failed_when: not  localhost_ping_reg['stdout']
+                            | regex_search('100.*% packet loss')
+          delegate_to: 127.0.0.1
 
-      - name: Build list of usable IP addresses
-        ansible.builtin.set_fact:
-          available_ips: "{{  iface['addrs']
-                              | default(  range(  first_ip_int | int,
-                                                  last_ip_int | int )
-                                          | map('ansible.netcommon.ipaddr') )
-                              | difference( used_ip4s | default([]) ) }}"
-        vars:
-          first_ip_int: "{{ iface['subnet_addr']
-                            | ansible.netcommon.ipaddr('next_usable')
-                            | ansible.netcommon.ipaddr('int') }}"
-          last_ip_int: "{{  iface['subnet_addr']
-                            | ansible.netcommon.ipaddr('last_usable')
-                            | ansible.netcommon.ipaddr('int') }}"
+      rescue:
 
-      - name: Test public IPs
-        ansible.builtin.shell:
-          cmd: "! ping -c 2 {{ip_item}} 1>/dev/null || echo {{ip_item}}"
-        register: public_ips_in_use_reg
-        changed_when: false
-        loop: "{{ available_ips | ansible.netcommon.ipaddr('public') }}"
-        loop_control:
-          loop_var: ip_item
+        - name: >-
+            Collision was detected, adding {{ ip4_candidate }} to used IPv4
+            list
+          ansible.builtin.set_fact:
+            used_ip4s: "{{ used_ip4s | union( [ip4_candidate] ) }}"
 
-      - name: Exclude reachable public IPs from usable pool
-        ansible.builtin.set_fact:
-          available_ips: "{{  available_ips
-                              | difference( public_ips_in_use_reg['results']
-                                            | map(attribute='stdout_lines')
-                                            | flatten ) }}"
-        when: not public_ips_in_use_reg is skipped
+        - name: Increment recursion counter
+          ansible.builtin.set_fact:
+            def_iface_ip4_rec_count: "{{  def_iface_ip4_rec_count
+                                          | default(1)
+                                          | int
+                                          + 1 }}"
 
-      - name: "Assign {{ip_var}} to {{iface['dev']}}"
-        ansible.builtin.set_fact:
-          iface_ip4: "{{ip_var}}"
-        vars:
-          ip_var: "{{ available_ips | random(seed=iface['dev']) }}"
+        - name: >-
+            Begin attempt {{ def_iface_ip4_rec_count }} to assign an IPv4
+            address to {{ iface['dev'] }}
+          ansible.builtin.include_tasks: def_iface_ip4.yml
 
-      - name: "Sanity check {{iface_ip}}"
-        ansible.builtin.assert:
-          that: iface_ip4 | ansible.netcommon.ipaddr
-          quiet: true
+    # The IP passed the collision tests and will be assigned to the
+    # host. Add it to the used list, register it to the interface's
+    # DHCP client identifier and add it to the interface definitions.
+    - name: "Add {{ ip4_candidate }} to the used IPv4 list"
+      ansible.builtin.set_fact:
+        used_ip4s: "{{ used_ip4s | union( [ip4_candidate] ) }}"
+
+    - name: "Register IPv4 assignment for {{ ip4_candidate }}"
+      ansible.builtin.set_fact:
+        site_ips: >-
+          {{  site_ips
+              | combine(  { subnet_var: subnet_assignments_var },
+                          recursive=true ) }}
+      changed_when: true
+      run_once: true
+      vars:
+        subnet_var: "{{ iface['subnet'] }}"
+        client_id_var: "{{ iface['dhcp_client_id'] }}"
+        assign_var: "{{ { client_id_var: { 'ip4': ip4_candidate } } }}"
+        subnet_assignments_var: >-
+          {{  site_ips[subnet_var]
+              | combine( assign_var, recursive=true ) }}
+      when: iface['subnet'] is defined
+      notify: save site ips var
+
+    - name: "Assign {{ ip4_candidate }} to {{ iface['dev'] }}"
+      ansible.builtin.set_fact:
+        iface: "{{ iface | combine( { 'ip4': ip4_candidate} ) }}"

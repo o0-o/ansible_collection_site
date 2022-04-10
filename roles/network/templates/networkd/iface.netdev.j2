@@ -3,10 +3,10 @@
 {% if iface['description'] is defined %}
 Description={{iface['description']}}
 {% endif %}
-Name={{iface['dev']}}
+Name={{ iface['dev'] }}
 {% if iface['type'] == 'vlan' %}
 Kind=vlan
 
 [VLAN]
-Id={{iface['subnet_id']}}
+Id={{ iface['subnet_id'] }}
 {% endif %}

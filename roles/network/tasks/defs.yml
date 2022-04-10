@@ -1,145 +1,195 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Define the network
+#
+########################################################################
 
 - name: Load platform-specific variables
-  ansible.builtin.include_vars: "{{lookup('first_found', files_var)}}"
+  ansible.builtin.include_vars: "{{ lookup('first_found', files_var) }}"
   vars:
     files_var:
       files:
-      - "{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_version | lower }}.yml"
-      - "{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}.yml"
-      - "{{ ansible_distribution | lower }}.yml"
-      - "{{ ansible_service_mgr | lower }}.yml"
-      - "{{ ansible_os_family | lower }}.yml"
-      - "{{ ansible_system | lower }}.yml"
-      - /dev/null
+        - "{{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}.yml"
+        - "{{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{ ansible_distribution | lower }}.yml"
+        - "{{ ansible_service_mgr | lower }}.yml"
+        - "{{ ansible_os_family | lower }}.yml"
+        - "{{ ansible_system | lower }}.yml"
+        - /dev/null
       paths:
-      - vars/
+        - vars/
 
-- name: Determine the network controller
-  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+# Define the network controller if applicable. Practically, this means
+# either NetworkManager or networkd on Linux. Other network control
+# services on Linux are not supported and other operating systems do not
+# have more than one.
+- name: Define the network controller
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
   vars:
     prefix_var: def_net_ctl_srv_
-    suffix_var: .yml
     files_var:
       files:
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_version | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_service_mgr | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_os_family | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_system | lower }}\
-        {{suffix_var}}"
-      - /dev/null
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_service_mgr | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}.yml"
+        - /dev/null
       paths:
-      - tasks/
+        - tasks/
 
-# Each dictionary contains the device name and hardware MAC address
-- name: Build a list of dictionaries for each physical network interface
-  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+# Discover all physical interfaces on the host. "Physical" here means
+# either a real network port on a bare metal host device or a
+# virtualized one on a virtual machine. It does not include VLANs,
+# software bridges or any other network interface that is defined by
+# software on the host. The resulting phy_ifaces_disco variable contains
+# a list of dictionaries pairng hardware MAC addresses and device names.
+- name: Define all discovered physical interfaces
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
   vars:
+    prefix_var: def_disco_phy_ifaces_
     files_var:
       files:
-      - "def_phy_ifaces_{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_version | lower }}.yml"
-      - "def_phy_ifaces_{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}.yml"
-      - "def_phy_ifaces_{{ ansible_distribution | lower }}.yml"
-      - "def_phy_ifaces_{{ ansible_service_mgr | lower }}.yml"
-      - "def_phy_ifaces_{{ ansible_os_family | lower }}.yml"
-      - "def_phy_ifaces_{{ ansible_system | lower }}.yml"
-      - def_phy_ifaces_dmesg.yml
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_service_mgr | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}.yml"
+        - "{{ prefix_var }}\
+          dmesg.yml"
       paths:
-      - tasks/
+        - tasks/
 
-# If no physical interfaces are configured, use list of discovered
-# interfaces to build the inventory.
-- name: Discover and validate interface definitions
+# If interface definitions are provided via the phy_ifaces variable from
+# the host variables inventory file, then those are checked against the
+# discovered interfaces to ensure that they are still present and that
+# hardware addresses match device names. If no interface defintions are
+# provided by the inventory, current static IP addresses or DHCPv4
+# status are retrieved from the host and an initial phy_ifaces variable
+# is built from that information and later saved to the host variables
+# file via handler.
+- name: Define physical interfaces
   ansible.builtin.include_tasks: def_phy_iface.yml
   loop: "{{ phy_ifaces | default(phy_ifaces_disco) }}"
   loop_control:
     loop_var: phy_iface_item
 
-- name: Use the new physical interface definitions
+- name: Update phyisical interfaces list
   ansible.builtin.set_fact:
-    phy_ifaces: "{{new_phy_ifaces}}"
+    phy_ifaces: "{{ phy_ifaces_tmp }}"
   changed_when: true
-  when: phy_ifaces | default([]) != new_phy_ifaces | default([])
-  notify: save host vars
+  when: phy_ifaces | default([]) != phy_ifaces_tmp
+  notify: save phy ifaces var
 
-# LAN addressing scheme follows: 10.site.subnet.host. Subnets are
-# randomly assigned between 2 and 255 (correlating to VLANs).
+# NOTE: variables defined by set_fact in this block will be available to
+# all hosts. We specifically rely on this for the site_subnets and
+# site_ips dictionaries.
+- name: Define subnets and used IPv4 address list
+  run_once: true
+  block:
 
-# To assign VLANs to new or unconfigured networks, we need a list of
-# currently used network IDs to avoid collisions.
-- name: Define a list of used subnet IDs
+    # Any subnet definitions that are provided via the site_subnets
+    # variable from the group variables file are assigned random ID
+    # numbers between 2 and 254 (inclusive). These form the 3rd octet
+    # of IPv4 addresses for those subnets (unless they specify an
+    # address pool). Corresponding VLANs are also identified by their
+    # subnet ID. The updated site_subnets variable is saved to the group
+    # variables file for the site via handler. The site_ips variable is
+    # also initialized.
+    - name: Define subnets
+      ansible.builtin.include_tasks: def_subnet.yml
+      when: site_subnets is defined
+      loop: "{{ site_subnets.keys() | list }}"
+      loop_control:
+        loop_var: subnet_name_item
+
+    # Build a list of used IP addresses from both Ansible facts and the
+    # site_ips dictionary from the site's group variables file.
+    - name: Get IPv4 addresses from all hosts
+      ansible.builtin.setup:
+        filter:
+          - ansible_all_ipv4_addresses
+      delegate_to: "{{ play_host_item }}"
+      delegate_facts: true
+      loop: "{{ ansible_play_hosts }}"
+      loop_control:
+        loop_var: play_host_item
+
+    - name: Define a list of used IPv4 addresses
+      ansible.builtin.set_fact:
+        used_ip4s: "{{ ansible_used_ip4s_var | union(site_used_ip4s_var) }}"
+      vars:
+        ansible_used_ip4s_var: >-
+          {{  ansible_play_hosts
+              | map('extract', hostvars, 'ansible_all_ipv4_addresses')
+              | select('defined')
+              | flatten }}
+        site_used_ip4s_var: >-
+          {{  ( site_ips | default({}) ).values()
+              | map('dict2items')
+              | flatten
+              | selectattr('value.ip4', 'defined')
+              | map(attribute='value.ip4') }}
+
+# The DUID is generated for the host. It is a type 4 DUID-UUID generated
+# from a truncated SHA256 hash of a composite of host identifiers. Once
+# generated, it is also saved to the host variables file via handler.
+# The UUID is type 4, variant 1.
+- name: Define the DUID-UID
   ansible.builtin.set_fact:
-    subnet_ids: "{{ subnet_ids
-                    | default([])
-                    | union([subnet_item['subnet_id']]) }}"
-  when: subnet_item['subnet_id'] is defined
-  loop: "{{ site_subnets | dict2items | flatten(levels=1) }}"
-  loop_control:
-    loop_var: subnet_item
+    duid_uuid: "{{ uuid_var }}"
+  changed_when: true
+  vars:
+    sys_hash_var: "{{ ( ansible_system_vendor
+                        + ansible_product_name
+                        + ansible_product_version
+                        + ansible_product_uuid
+                        + ansible_product_serial
+                        + ansible_machine_id | default )
+                      | hash('sha256') }}"
+    uuid_var: "{{ ( sys_hash_var[:12] | string
+                    + '4'
+                    + sys_hash_var[13:16] | string
+                    + ['8', '9', 'a', 'b'] | random | string
+                    + sys_hash_var[17:32] | string )
+                  | regex_findall('..')
+                  | join(':') }}"
+  when: duid_uuid is undefined
+  notify: save duid uuid var
 
-- name: Build and validate subnet definitions
-  ansible.builtin.include_tasks: def_subnet.yml
-  when: site_subnets is defined
-  loop: "{{ site_subnets.keys() | list }}"
-  loop_control:
-    loop_var: subnet_name_item
-
-- name: Sanity check new network definitions
+# Observed VMs have had either a UUID (BSD) or a machine ID (Linux), but
+# it is possible that VM could have neither or not be unique because of
+# cloning or for some other reason.
+- name: DUID_UUID must be unique to the host
   ansible.builtin.assert:
-    that: site_subnets | length == new_site_subnets | default({}) | length
+    that: uuid_matches_var | int == 1
     quiet: true
-  when: site_subnets is defined
-
-- name: Use new subnet definitions
-  ansible.builtin.set_fact:
-    site_subnets: "{{new_site_subnets}}"
-  changed_when: true
-  when:
-  - site_subnets is defined
-  - new_site_subnets is defined
-  - site_subnets != new_site_subnets
-  notify: save net vars
-
-- name: Get IPv4 addresses from all hosts
-  ansible.builtin.setup:
-    filter:
-    - 'ansible_all_ipv4_addresses'
-  delegate_to: "{{all_hosts_item}}"
-  delegate_facts: true
-  ignore_errors: true
-  ignore_unreachable: true
-  run_once: true
-  loop: "{{groups['all']}}"
-  loop_control:
-    loop_var: all_hosts_item
-
-# run_once so the used_ip4s variable is available across all hosts
-- name: Define a list of used IPv4 addresses
-  ansible.builtin.set_fact:
-    used_ip4s: "{{  groups['all']
-                    | map('extract', hostvars, 'ansible_all_ipv4_addresses')
-                    | list
-                    | select('defined')
-                    | flatten
-                    | unique }}"
-  run_once: true
+    fail_msg: "{{ duid_uuid }} is not unique!"
+  vars:
+    uuid_matches_var: "{{ ansible_play_hosts
+                          | map('extract', hostvars, 'duid_uuid')
+                          | list
+                          | flatten
+                          | select('match', duid_uuid)
+                          | length }}"

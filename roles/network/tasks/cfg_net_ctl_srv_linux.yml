@@ -8,7 +8,7 @@
 ########################################################################
 
 - name: Configure the network control service on Linux
-  ansible.builtin.include_tasks: "cfg_net_ctl_srv_{{net_ctl_srv}}"
+  ansible.builtin.include_tasks: "cfg_net_ctl_srv_linux_{{ net_ctl_srv }}.yml"
 
 # ifupdown is not supported. Must be disabled after network restart
 # handlers run to avoid losing connection to hosts.

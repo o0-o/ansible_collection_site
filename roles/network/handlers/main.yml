@@ -1,11 +1,11 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
-- name: save site subnet var
+- name: save site subnets var
   ansible.builtin.blockinfile:
-    path: "{{cwd}}/inventory/group_vars/{{site_group}}.yml"
+    path: "{{ cwd }}/inventory/group_vars/{{ site_group }}.yml"
     marker: "# {mark} ANSIBLE MANAGED BLOCK: Site Subnet"
-    insertafter: '^site: .*'
+    insertbefore: '# Add custom variables below:'
     block: |
       site_subnets:
         {{  site_subnets
@@ -14,23 +14,52 @@
             | trim }}
     backup: true
   delegate_to: 127.0.0.1
+  when: site_subnets is defined
   listen: save net vars
 
-- name: save physical ifaces var
+- name: save site ips var
   ansible.builtin.blockinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/group_vars/{{ site_group }}.yml"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: Site IPs"
+    insertbefore: '# Add custom variables below:'
+    block: |
+      site_ips:
+        {{  site_ips
+            | to_nice_yaml(width=1023, indent=2)
+            | indent(2)
+            | trim }}
+    backup: true
+  delegate_to: 127.0.0.1
+  when: site_ips is defined
+  listen: save net vars
+
+- name: save duid uuid var
+  ansible.builtin.lineinfile:
+    path: "{{ cwd }}/inventory/host_vars\
+      /{{ update_hostname | default(inventory_hostname) }}.yml"
+    line: "duid_uuid: {{ duid_uuid }}"
+    regexp: '^#?duid_uuid:'
+    insertbefore: '# Add custom variables below:'
+    backup: true
+  delegate_to: 127.0.0.1
+  when: duid_uuid is defined
+  listen: save host vars
+
+- name: save phy ifaces var
+  ansible.builtin.blockinfile:
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     marker: "# {mark} ANSIBLE MANAGED BLOCK: Physical Network Interfaces"
     insertbefore: '# Add custom variables below:'
     block: |
       phy_ifaces:
         {{  phy_ifaces
-            | default([])
             | to_nice_yaml(width=1023, indent=2)
             | indent(2)
             | trim }}
     backup: true
   delegate_to: 127.0.0.1
+  when: phy_ifaces is defined
   listen: save host vars
 
 - name: stop and disable ifupdown
@@ -40,11 +69,11 @@
     enabled: false
   become: true
 
-# Requires ssh_args= -o ControlPersist=10s in ansible.cfg
 - name: restart network (openbsd)
-  ansible.builtin.raw: >
-    sleep 1 &&
-    sh /etc/netstart &
+  ansible.builtin.command:
+    argv:
+      - sh
+      - /etc/netstart
   become: true
   when: ansible_system | lower == 'openbsd'
   listen: restart network
@@ -53,66 +82,57 @@
   ansible.builtin.service:
     name: NetworkManager
     state: restarted
-  become: yes
+  become: true
   when:
-  - ansible_system | lower == 'linux'
-  - net_ctl_srv == 'nm'
-  listen: restart network
+    - ansible_system | lower == 'linux'
+    - net_ctl_srv == 'nm'
+  listen:
+    - restart network (networkmanager)
+    - restart network
 
 - name: restart network (networkmanager 2)
   ansible.builtin.shell:
     cmd: nmcli networking off && nmcli networking on
-  become: yes
+  become: true
   when:
-  - ansible_system | lower == 'linux'
-  - net_ctl_srv == 'nm'
-  listen: restart network
+    - ansible_system | lower == 'linux'
+    - net_ctl_srv == 'nm'
+  listen:
+    - restart network (networkmanager)
+    - restart network
 
 - name: restart network (networkd)
   ansible.builtin.service:
     name: systemd-networkd
     state: restarted
-  become: yes
+  become: true
   when:
-  - ansible_system | lower == 'linux'
-  - net_ctl_srv == 'networkd'
+    - ansible_system | lower == 'linux'
+    - net_ctl_srv == 'networkd'
   listen: restart network
 
 - name: restart network (freebsd)
-  ansible.builtin.shell:
-    cmd: >
-      service netif restart &&
-      service routing restart
-  become: yes
+  ansible.builtin.command:
+    argv:
+      - service
+      - netif
+      - restart
+  become: true
   when: ansible_system | lower == 'freebsd'
   listen: restart network
 
-- name: wait 30 seconds
-  ansible.builtin.wait_for:
-    timeout: 30
-  delegate_to: 127.0.0.1
-  listen: restart network
-
-#- name: reset connection
-#  ansible.builtin.meta: reset_connection
-#  timeout: 15
-#  listen: restart network
-
-#- name: reset connection again
-#  ansible.builtin.meta: reset_connection
-#  timeout: 15
-#  listen: restart network
-
-#- name: wait for ssh
-#  ansible.builtin.wait_for:
-#    port: "{{ansible_port}}"
-#    delay: 5
-#  timeout: 15
-#  listen: restart network
+- name: restart routing (freebsd)
+  ansible.builtin.command:
+    argv:
+      - service
+      - routing
+      - restart
+  become: true
+  when: ansible_system | lower == 'freebsd'
+  listen:
+    - restart network (freebsd)
+    - restart network
 
 - name: gather facts
   ansible.builtin.setup:
   listen: restart network
-
-- name: update service facts
-  ansible.builtin.service_facts:

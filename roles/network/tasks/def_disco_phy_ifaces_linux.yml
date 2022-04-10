@@ -1,33 +1,40 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Build a list of dictionaries for each physical network interface using
-# the ip command in Linux.
+# Define all discovered physical interfaces (Linux)
+#
+# Use the ip command to gather hardware MAC address and device names.
+#
+# NOTE: Older versions of the ip command do not work here. CentOS 7
+# will use the dmesg method in def_disco_phy_ifaces_dmesg.yml.
 #
 ########################################################################
 
 - name: Get interface definitions from ip link
   ansible.builtin.command:
-    cmd: "ip -json -detail link show {{iface_var}}"
+    argv:
+      - ip
+      - -json
+      - -detail
+      - link
+      - show
   become: true
   changed_when: false
   register: ip_link_reg
-  loop: "{{ansible_interfaces}}"
-  loop_control:
-    loop_var: iface_var
 
 - name: Parse hardware addresses and device names from ip link on Linux
   ansible.builtin.set_fact:
     phy_ifaces_disco: >-
       {{  phy_ifaces_disco
           | default([])
-          | union(  [ { 'dev':  link_item['ifname'],
+          | union(  [ { 'dev': link_item['ifname'],
                         'hw_addr':  link_item['permaddr']
                                     | default(link_item['address']) } ] ) }}
-  when: link_item['link_type'] == 'ether'
-  loop: "{{ ip_link_reg['results']
-            | map(attribute='stdout')
-            | map('from_json')
-            | flatten }}"
+  when:
+    - link_item['link_type'] == 'ether'
+    - link_item['linkinfo']['info_kind'] | default != 'vlan'
+  loop: "{{ ip_link_reg['stdout']
+            | from_json
+            }}"
   loop_control:
     loop_var: link_item

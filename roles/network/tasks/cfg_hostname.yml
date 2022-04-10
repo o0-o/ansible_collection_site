@@ -25,35 +25,35 @@
 - name: Try hostname module (failing on OpenBSD with Ansible Core 2.12.1)
   block:
 
-  - name: Configure hostname
-    ansible.builtin.hostname:
-      name: "{{fqdn}}"
-    become: true
+    - name: Configure hostname
+      ansible.builtin.hostname:
+        name: "{{ fqdn }}"
+      become: true
 
   rescue:
 
-  - name: Fail if not OpenBSD
-    ansible.builtin.fail:
-      msg: Failed to configure hostname
-    when: ansible_system | lower != 'openbsd'
+    - name: Fail if not OpenBSD
+      ansible.builtin.fail:
+        msg: Failed to configure hostname
+      when: ansible_system | lower != 'openbsd'
 
-  - name: Configure the hostname manually on OpenBSD
-    ansible.builtin.copy:
-      dest: /etc/myname
-      content: "{{fqdn}}\n"
-      mode: 0644
-      owner: root
-      group: wheel
-    become: yes
+    - name: Configure the hostname manually on OpenBSD
+      ansible.builtin.copy:
+        dest: /etc/myname
+        content: "{{ fqdn }}\n"
+        mode: 0644
+        owner: root
+        group: wheel
+      become: true
 
 # This is explicitly best practice for domain controllers but not a bad
 # idea in general.
 - name: Save hostname to hosts file
   ansible.builtin.lineinfile:
     path: /etc/hosts
-    regexp: " {{fqdn}} {{inventory_hostname_short}}"
+    regexp: " {{ fqdn }} {{ inventory_hostname_short }}"
     line: >-
-      {{ansible_default_ipv4['address']}}
-      {{fqdn}}
-      {{inventory_hostname_short}}
+      {{ ansible_default_ipv4['address'] }}
+      {{ fqdn }}
+      {{ inventory_hostname_short }}
   become: true

@@ -11,6 +11,9 @@ members can be filtered with pf like any other interface.
 	| comment(	prefix=default_comment_prefix | default(),
 			postfix=default_comment_postfix | default() ) }}
 {% if iface['description'] is defined %}
+# Reset Interface
+destroy
+
 description "{{iface['description']}} (Bridge)"
 {% endif %}
 

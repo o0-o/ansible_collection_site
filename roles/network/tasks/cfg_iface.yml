@@ -1,98 +1,108 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Configure interfaces based on iface list in host_vars and net dict in
-# group_vars
-#
-# Interfaces are configured in the following order: CARP, VLAN, physical
-# interface. This allows interfaces with a limited address pool (WAN) to
-# have only a CARP address.
-#
-# In addition to CARP and simple IPv4, pf tables entries, routes and MTU
-# are configured in the hostname.if files. Description and group are
-# configured based on the net dict.
+# Configure a network interface
 #
 ########################################################################
 
+# Flesh out interface definitions by combining the provided interface
+# definition, subnet definition, defaults, etc.
 - name: Define the interface
   ansible.builtin.include_tasks: def_iface.yml
 
-# CARP gets address precedence in case only 1 IP address is available.
-- name: "Configure CARP interface {{carp_var['dev']}}"
-  ansible.builtin.include_tasks: cfg_iface_carp.yml
+# If the current interface is defined to be the parent of a CARP
+# interface. Include this file recursively, providing it with the
+# defintion of the CARP child interface. CARP has precedence in case of
+# a limited address pool (WAN), CARP should get the address.
+- name: "Configure CARP child interface on interface {{ iface['dev'] }}"
+  ansible.builtin.include_tasks: cfg_iface.yml
   register: cfg_carp_reg
   vars:
-    carp_var: "{{ { 'dev': 'carp' + iface['subnet_id'] | string,
+    carp_var: "{{ { 'dev':    'carp' + iface['subnet_id'] | string,
+                    'type':   'carp',
                     'subnet': iface['subnet'],
-                    'vhid': iface['subnet_id'] } }}"
+                    'vhid':   site_subnets[ iface['subnet'] ]['subnet_id']} }}"
+  when: iface['carp']
+
+# If the current interface is a CARP interface, run CARP-specific
+# configuration tasks.
+- name: "Run CARP-specific tasks for interface {{ iface['dev'] }}"
+  ansible.builtin.include_tasks: cfg_iface_carp.yml
   when:
-  - ansible_system | lower in ['openbsd', 'freebsd']
-  - iface['subnet'] is defined
-  - iface['carp'] | default(false)
+    - iface['type'] == 'carp'
 
 - name: Reset variables after CARP configuration
   ansible.builtin.include_tasks: def_iface.yml
-  when: iface['type'] == 'carp'
+  when:
+    - iface['type'] == 'carp'
+    - carp_var is undefined
 
-- name: "Configure VLANS on {{iface['dev']}}"
-  ansible.builtin.include_tasks: cfg_iface_vlan.yml
+# If the VLANs are defined for the interface, recursively include this
+# task file for each VLAN, providing it with defintions of each VLAN
+# interface.
+- name: "Configure VLAN child interfaces on {{ iface['dev'] }}"
+  ansible.builtin.include_tasks: cfg_iface.yml
+  register: cfg_vlan_reg
+  vars:
+    vlan_num_var: "{{ site_subnets[vlan_subnet_item]['subnet_id'] }}"
+    vlan_dev_var: "{{ 'vlan' + vlan_num_var | string }}"
+    vlan_var: "{{ { 'dev': vlan_dev_var,
+                    'subnet': vlan_subnet_item,
+                    'type': 'vlan' } }}"
   loop: "{{ iface['vlans'] | default([]) }}"
   loop_control:
     loop_var: vlan_subnet_item
 
 - name: Reset variables after VLAN configuration
   ansible.builtin.include_tasks: def_iface.yml
-  when: iface['type'] == 'vlan'
+  when:
+    - iface['type'] == 'vlan'
+    - vlan_var is undefined
 
-# Need to run this serially to avoid IP collisions
-- name: "Define the IP address for interface {{iface['dev']}}"
+# If it is in a subnet or has an address pool, define IPv4 addressing
+# for the current interface. If no IPv4 address is found in the site_ips
+# dictionary or if the current address is not within the interface's
+# address pool or subnet, one is chosen at random from pool or subnet.
+- name: "Define the IPv4 address for interface {{ iface['dev'] }}"
   ansible.builtin.include_tasks: def_iface_ip4.yml
+  when: iface['subnet'] is defined
+        or iface['addr_pool'] is defined
 
+# Configure the interface (network restart via handlers).
 - name: Run platform-specific interface configuration tasks
-  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
   vars:
     prefix_var: cfg_iface_
-    suffix_var: .yml
     files_var:
       files:
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_version | lower() }}_\
-        {{ net_ctl_srv | default }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_version | lower() }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}_\
-        {{ net_ctl_srv | default }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}_\
-        {{ net_ctl_srv | default }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_distribution | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_os_family | lower }}_\
-        {{ net_ctl_srv | default }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_os_family | lower }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_system | lower }}_\
-        {{ net_ctl_srv | default }}\
-        {{suffix_var}}"
-      - "{{prefix_var}}\
-        {{ ansible_system | lower }}\
-        {{suffix_var}}"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}.yml"
       paths:
-      - tasks/
+        - tasks/

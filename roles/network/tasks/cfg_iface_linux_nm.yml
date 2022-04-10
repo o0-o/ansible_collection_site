@@ -1,23 +1,30 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Configure a network interface on Linux with NetworkManager.
+# Configure a network interface on Linux with NetworkManager
+#
+# Documentation on nmcli can be found here:
+# https://networkmanager.dev/docs/api/latest/nm-settings-nmcli.html
 #
 ########################################################################
 
 - name: >-
-    Name the NetworkManager connection after the hardware address:
-    {{nm_con_name_var}}
+    Name the NetworkManager connection after the hardware address
+    {{ nm_con_name_var }}
   ansible.builtin.set_fact:
-    nm_con_name: "{{nm_con_name_var}}"
+    nm_con_name: "{{ nm_con_name_var }}"
   vars:
     nm_con_name_var: "{{  iface['hw_addr']
                           | default(iface['dev'])
                           | regex_replace(':', '-') }}"
 
-- name: "Check if the connection {{nm_con_name}} exists"
-  ansible.builtin.shell:
-    cmd: nmcli connection show {{nm_con_name}}
+- name: "Check if the connection {{ nm_con_name }} exists"
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - connection
+      - show
+      - "{{ nm_con_name }}"
   changed_when: false
   failed_when: false
   register: nm_con_show_reg
@@ -25,9 +32,14 @@
 
 # Don't delete any extant connections until new connection is
 # configured.
-- name: List pre-existing connections
+- name: List existing connections
   ansible.builtin.command:
-    cmd: nmcli --get-values 'uuid,device' connection show
+    argv:
+      - nmcli
+      - --get-values
+      - uuid,device
+      - connection
+      - show
   changed_when: false
   become: true
   register: nm_con_uuid_dev_reg
@@ -43,201 +55,188 @@
     nm_iface_type: vlan
   when: iface['type'] == 'vlan'
 
+- name: Define formatted interface name for task names
+  ansible.builtin.set_fact:
+    nm_name_pretty: "{{ ( iface['dev'] == nm_con_name )
+                        | ternary(  iface['dev'],
+                                    iface['dev']
+                                    + ' ('
+                                    + nm_con_name
+                                    + ')' ) }}"
+
 # The nmcli module seems insistent that certain parameters are set in
-# the presence of others, so instead of gradually building the
-# configuration, the entire interface is configured in one command.
-# Unfortunately, this necessitates some repitition as well as compound
-# conditionals for different interface configurations.
+# the presence of others, so in order to gradually build the
+# configuration, we have to build the command and then execute it. This
+# is not recommended by Ansible because set_fact can be overridden in
+# variable precedence. We can protect against that with the assert task
+# below.
 
 - name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}} as a physical interface with no
-    IP address
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    ifname: "{{iface['dev']}}"
-    type: "{{nm_iface_type}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: disabled
-    method6: disabled
-    state: present
-  become: true
-  when:
-  - nm_iface_type == 'ethernet'
-  - iface_ip4 == ''
-  notify: restart network
+    Test that we have control of the the nm_task variable by assigning it a
+    benign value
+  ansible.builtin.set_fact:
+    nm_task: {}
 
-# Only use DUID if MAC address is randomized
-- name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}} as a physical interface with
-    DHCP
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    ifname: "{{iface['dev']}}"
-    type: "{{nm_iface_type}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: auto
-    dhcp_client_id: "{{ iface['rand_mac'] | ternary('duid', 'perm-mac') }}"
-    state: present
-  become: true
-  when:
-  - nm_iface_type == 'ethernet'
-  - iface['dhcp4']
-  notify: restart network
+- name: Confirm nm_task has that value
+  ansible.builtin.assert:
+    that: nm_task == {}
+    quiet: true
+    fail_msg: >
+      The variable nm_tasks has been overriden (potentially maliciously).
 
 - name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}} as a physical interface with
-    IPv4 address {{iface_ip}}/{{iface['prefix4']}}
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    ifname: "{{iface['dev']}}"
-    type: "{{nm_iface_type}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: manual
-    ip4: "{{iface_ip4}}/{{iface['prefix4']}}"
-    state: present
-  become: true
-  when:
-  - nm_iface_type == 'ethernet'
-  - not iface['dhcp4']
-  - iface_ip4 | ansible.netcommon.ipv4
-  - iface['routes'][0] is undefined
-  notify: restart network
+    Define the basic community.general.nmcli task for {{ nm_name_pretty }}
+  ansible.builtin.set_fact:
+    nm_task:
+      conn_name: "{{ nm_con_name }}"
+      type: "{{ nm_iface_type }}"
+      method6: ignore
+      autoconnect: true
+      state: present
 
-# Passing an empy list to routes results in an error. Passing a
-# list containing a single empty string succeeds but ceases to be
-# idempotent (it is marked as changed even when all configuration has
-# already been applied). Thus, we have to create yet another case for
-# when routes exist.
-- name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}}  as a physical interface with
-    IPv4 address {{iface_ip}}/{{iface['prefix4']}} and routes
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    ifname: "{{iface['dev']}}"
-    type: "{{nm_iface_type}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: manual
-    ip4: "{{iface_ip4}}/{{iface['prefix4']}}"
-    routes4: "{{  iface['routes']
-                  | map('dict2items')
-                  | map('map', attribute='value')
-                  | map('join', ' ')
-                  | map('regex_replace', '0/0', '0.0.0.0/0')
-                  | map('regex_replace', 'default', '0.0.0.0/0') }}"
-    state: present
-  become: true
-  when:
-  - nm_iface_type == 'ethernet'
-  - iface_ip4 | ansible.netcommon.ipv4
-  - iface['routes'][0] is defined
-  notify: restart network
+- name: Confirm nm_task has changed
+  ansible.builtin.assert:
+    that: nm_task != {}
+    quiet: true
+    fail_msg: >
+      The variable nm_tasks has been overriden (potentially maliciously).
 
-- name: "Configure {{nm_con_name}}/{{iface['dev']}} as a VLAN with DHCP"
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    type: "{{nm_iface_type}}"
-    vlandev: "{{phy_iface_item['dev']}}"
-    vlanid: "{{iface['subnet_id']}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: auto
-    dhcp_client_id: duid
-    state: present
-  become: true
+- name: "Define the name of a physical interface {{ nm_name_pretty }}"
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( { 'ifname': iface['dev'] } ) }}"
+  when: iface['type'] == 'phy'
+
+- name: "Define the VLAN device and ID of {{ nm_name_pretty }}"
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( {  'vlandev': phy_iface_item['dev'],
+                                'vlanid': iface['subnet_id'] } ) }}"
+  when: iface['type'] == 'vlan'
+
+- name: "Interface {{ nm_name_pretty }} has no ipv4 address"
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( { 'method4': 'disabled' } ) }}"
   when:
-  - nm_iface_type == 'vlan'
-  - iface['dhcp4']
-  notify: restart network
+    - iface['ip4'] is undefined or iface['prefix4'] is undefined
+    - not iface['dhcp4']
+
+- name: "Interface {{ nm_name_pretty }} is configured to use DHCP"
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( {  'method4': 'auto',
+                                'dhcp_client_id': id_var } ) }}"
+  vars:
+    id_var: "{{ 'ff:' + iface['dhcp_client_id'] }}"
+  when: iface['dhcp4']
 
 - name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}} as a VLAN with IPv4 address
-    {{iface_ip}}/{{iface['prefix4']}}
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    type: "{{nm_iface_type}}"
-    vlandev: "{{phy_iface_item['dev']}}"
-    vlanid: "{{iface['subnet_id']}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: manual
-    ip4: "{{iface_ip4}}/{{iface['prefix4']}}"
-    state: present
-  become: true
+    Interface {{ nm_name_pretty }} has an IPv4 address of {{ iface['ip4'] }}
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( {  'method4': 'manual',
+                                'ip4': cidr_var } ) }}"
+  vars:
+    cidr_var: "{{ iface['ip4'] }}/{{ iface['prefix4'] }}"
   when:
-  - nm_iface_type == 'vlan'
-  - iface_ip4 | ansible.netcommon.ipv4
-  - iface['routes'][0] is undefined
-  notify: restart network
+    - not iface['dhcp4']
+    - iface['ip4'] is defined
+    - iface['prefix4'] is defined
+
+- name: "Interface {{ nm_name_pretty }} has IPv4 routes"
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( { 'routes4': routes4_var } ) }}"
+  vars:
+    routes4_var: "{{  iface['routes'].keys()
+                      | zip( iface['routes'].values() )
+                      | map('ansible.netcommon.ipv4')
+                      | map('join', ' ') }}"
+  when:
+    - iface['routes'] is defined
+    - routes4_var != []
+
+- name: Interface {{ nm_name_pretty }} has an MTU of {{ iface['mtu'] }}
+  ansible.builtin.set_fact:
+    nm_task: "{{  nm_task
+                  | combine( { 'mtu': iface['mtu'] } ) }}"
+  when: iface['mtu'] is defined
 
 - name: >-
-    Configure {{nm_con_name}}/{{iface['dev']}} as a VLAN with IPv4 address
-    {{iface_ip}}/{{iface['prefix4']}} and routes
-  community.general.nmcli:
-    conn_name: "{{nm_con_name}}"
-    type: "{{nm_iface_type}}"
-    vlandev: "{{phy_iface_item['dev']}}"
-    vlanid: "{{subnet['id']}}"
-    autoconnect: true
-    mtu: "{{iface['mtu']}}"
-    method4: manual
-    ip4: "{{iface_ip4}}/{{iface['prefix4']}}"
-    routes4: "{{  iface['routes']
-                  | map('dict2items')
-                  | map('map', attribute='value')
-                  | map('join', ' ')
-                  | map('regex_replace', '0/0', '0.0.0.0/0')
-                  | map('regex_replace', 'default', '0.0.0.0/0') }}"
-    state: present
+    Run the NetworkManager task to configure interface {{ nm_name_pretty }}
+  community.general.nmcli: "{{ nm_task }}"
   become: true
-  when:
-  - nm_iface_type == 'vlan'
-  - iface_ip4 | ansible.netcommon.ipv4
-  - iface['routes'][0] is defined
-  notify: restart network
 
 # The nmcli module only allows random mac on wifi type interfaces so
 # we configure it manually.
-- name: >-
-    Get MAC Address configuration for interface
-    {{nm_con_name}}/{{iface['dev']}}
+- name: "Get MAC Address configuration for {{ nm_name_pretty }}"
   ansible.builtin.command:
     argv:
-    - nmcli
-    - --get-values
-    - 802-3-ethernet.cloned-mac-address
-    - connection
-    - show
-    - "{{nm_con_name}}"
+      - nmcli
+      - --get-values
+      - 802-3-ethernet.cloned-mac-address
+      - connection
+      - show
+      - "{{ nm_con_name }}"
   become: true
   register: mac_addr_rand_reg
   changed_when: false
 
-- name: "Configure {{nm_con_name}}/{{iface['dev']}} with a random MAC address"
+- name: "Configure {{ nm_name_pretty }} with a random MAC address"
   ansible.builtin.command:
     argv:
-    - nmcli
-    - connection
-    - modify
-    - "{{nm_con_name}}"
-    - 802-3-ethernet.cloned-mac-address
-    - "{{ mac_addr_var }}"
+      - nmcli
+      - connection
+      - modify
+      - "{{ nm_con_name }}"
+      - 802-3-ethernet.cloned-mac-address
+      - "{{ mac_addr_var }}"
   become: true
-  changed_when:
-  - mac_addr_rand_reg['stdout_lines'][0] | default != mac_addr_var
   vars:
     mac_addr_var: "{{ iface['rand_mac'] | ternary('random', 'permanent') }}"
   when:
-  - not ansible_check_mode
-  - mac_addr_rand_reg['stdout_lines'][0] | default != mac_addr_var
-  notify: restart network
+    - not ansible_check_mode
+    - mac_addr_rand_reg['stdout_lines'][0] | default != mac_addr_var
+  notify: restart network (networkmanager)
 
-- name: "Delete any conflicting connections on device {{iface['dev']}}"
+# The nmcli module does not allow configuring dhcp-send-hostname so we
+# configure it manually.
+- name: "Get dhcp-send-hostname configuration for {{ nm_name_pretty }}"
   ansible.builtin.command:
-    cmd: "nmcli connection delete {{con_item}}"
+    argv:
+      - nmcli
+      - --get-values
+      - ipv4.dhcp-send-hostname
+      - connection
+      - show
+      - "{{ nm_con_name }}"
+  become: true
+  register: dhcp_send_hostname_reg
+  changed_when: false
+
+- name: "Configure {{ nm_name_pretty }} not to send hostname in DHCP request"
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - connection
+      - modify
+      - "{{ nm_con_name }}"
+      - ipv4.dhcp-send-hostname
+      - false
+  become: true
+  when:
+    - not ansible_check_mode
+    - dhcp_send_hostname_reg['stdout_lines'][0] | default != 'no'
+  notify: restart network (networkmanager)
+
+- name: "Delete any conflicting connections on device {{ iface['dev'] }}"
+  ansible.builtin.command:
+    argv:
+      - nmcli
+      - connection
+      - delete
+      - "{{ con_item }}"
   become: true
   loop: "{{ nm_con_uuid_dev_reg['stdout_lines']
             | default([])
@@ -247,4 +246,4 @@
             | map('first') }}"
   loop_control:
     loop_var: con_item
-  notify: restart network
+  notify: restart network (networkmanager)

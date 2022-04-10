@@ -9,27 +9,35 @@ pf tables are also configured.
 {{	default_comment_header
 	| comment(	prefix=default_comment_prefix | default(),
 			postfix=default_comment_postfix | default() ) }}
+# Interface Reset
+{% if iface['type'] == 'phy' %}
+-inet
+-inet6
+{% else %}
+destroy
+{% endif %}
+
 {% if iface['description'] is defined %}
-description "{{iface['description']}}"
+description "{{ iface['description'] }}"
 {% endif %}
 {% if iface['type'] == 'carp' %}
 
 # CARP
-vhid {{iface['vhid']}}
-pass {{carp_pass}}
+vhid {{ iface['vhid'] }}
+pass {{ iface['carp_pw'] }}
 carpdev {{ vlan_var['dev'] | default(phy_iface_item['dev']) }}
-advskew {{advskew}}
+advskew {{ iface['advskew'] }}
 {% endif %}
 {% if iface['type'] =='vlan' %}
 
 # VLAN
-vnetid {{iface['subnet_id']}} parent {{phy_iface_item['dev']}}
+vnetid {{ iface['subnet_id'] }} parent {{ phy_iface_item['dev'] }}
 {% endif %}
 
-# Bring Up {{iface['dev']}}
+# Bring Up {{ iface['dev'] }}
 up
-{% if iface['type'] == 'phy' %}
-mtu {{iface['mtu']}}
+{% if iface['type'] == 'phy' and iface['mtu'] is defined %}
+mtu {{ iface['mtu'] }}
 {% endif %}
 
 # Addresses
@@ -38,11 +46,11 @@ lladdr random
 {% endif %}
 {% if iface['dhcp4'] %}
 dhcp
-{% elif iface_ip4 != '' %}
-inet {{iface_ip4}}/{{iface['prefix4']}}
+{% elif iface['ip4'] is defined and iface['prefix4'] is defined %}
+inet {{ iface['ip4'] }}/{{ iface['prefix4'] }}
 {% endif %}
 {% if iface['subnet'] is defined %}
-group {{iface['subnet']}}
+group {{ iface['subnet'] }}
 {% endif %}
 
 {#
@@ -51,11 +59,11 @@ All routing interfaces should be configured with CARP, so we limit
 route configuration to CARP interfaces.
 
 #}
-{% if iface['routes'][0] is defined %}
+{% if iface['routes'] is defined %}
 
 # Route
-{% for route in iface['routes'] %}
-!route add {{route['dest']}} {{route['hop']}}
+{% for dest in iface['routes'].keys() %}
+!route add {{ dest }} {{ iface['routes'][dest] }}
 {% endfor %}
 {% endif %}
 
@@ -69,9 +77,9 @@ All LAN networks must be /24 to support the 10.X.Y.Z schema
 # PF Tables
 {% for pf_table in net['client'] %}
 {#- All connected networks are added to the client tables -#}
-!pfctl -t {{pf_table}}-c -T add {{iface['subnet_addr']}}
+!pfctl -t {{ pf_table }}-c -T add {{ iface['subnet_addr'] }}
 {% for route in iface['routes'] | default([]) %}
-!pfctl -t {{pf_table}}-c -T add {{route['dest']}}
+!pfctl -t {{ pf_table }}-c -T add {{ route['dest'] }}
 {% endfor %}
 {% endfor %}
 {% elif iface['type'] == 'carp' %}

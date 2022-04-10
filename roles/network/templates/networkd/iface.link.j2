@@ -1,9 +1,9 @@
 [Match]
 
 {% if iface['hw_addr'] is defined %}
-PermanentMACAddress={{iface['hw_addr']}}
+PermanentMACAddress={{ iface['hw_addr'] }}
 {% else %}
-OriginalName={{iface['dev']}}
+OriginalName={{ iface['dev'] }}
 {% endif %}
 
 [Link]

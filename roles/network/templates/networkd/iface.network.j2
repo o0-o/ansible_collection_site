@@ -1,39 +1,50 @@
 [Match]
 
 {% if iface['hw_addr'] is defined %}
-PermanentMACAddress={{iface['hw_addr']}}
+PermanentMACAddress={{ iface['hw_addr'] }}
 {% else %}
-Name={{iface['dev']}}
+Name={{ iface['dev'] }}
 {% endif %}
 
 [Link]
 
-MTUBytes={{iface['mtu']}}
+{% if iface['mtu'] is defined %}
+MTUBytes={{ iface['mtu'] }}
+{% endif %}
 ActivationPolicy=up
 
 [Network]
 
 {% if iface['description'] is defined %}
-Description={{iface['description']}}
+Description={{ iface['description'] }}
 {% endif %}
 LinkLocalAddressing=no
 {% if iface['dhcp4'] %}
 DHCP=ipv4
-{% elif iface_ip4 != '' %}
-Address={{iface_ip4}}/{{iface['prefix4']}}
+{% elif iface['ip4'] is defined and iface['prefix4'] is defined %}
+Address={{ iface['ip4'] }}/{{ iface['prefix4'] }}
+{% else %}
+DHCP=false
 {% endif %}
 {% for vlan in iface['vlans'] | default([]) %}
-VLAN=vlan{{site_subnets[vlan]['subnet_id']}}
+VLAN=vlan{{ site_subnets[vlan]['subnet_id'] }}
 {% endfor %}
 {% if iface['dhcp4'] %}
+
 [DHCPv4]
 
+SendHostname=false
+{% if iface['rand_mac'] %}
 ClientIdentifier=duid
+IAID={{ iaid_int_var }}
+{% endif %}
 
 {% endif %}
-{% for route in iface['routes'] | default([]) %}
+{% if iface['routes'] is defined %}
+{% for dest in iface['routes'].keys() | default([]) %}
 [Route]
-Destination={{route['dest']}}
-Gateway={{route['hop']}}
+Destination={{ dest }}
+Gateway={{ iface['routes'][dest] }}
 
 {% endfor %}
+{% endif %}

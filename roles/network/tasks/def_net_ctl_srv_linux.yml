@@ -1,9 +1,10 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Determine the network controller to use in Linux. Only NetworkManager
-# and networkd are supported. NetworkManager is preferred if it is
-# running.
+# Define the network controller service (Linux)
+#
+# Only NetworkManager and networkd are supported. NetworkManager is
+# preferred if it is running.
 #
 ########################################################################
 
@@ -13,7 +14,7 @@
 # Assume NetworkManager owns network on the host if it is running
 - name: Define the Linux network controller (NetworkManager or networkd)
   ansible.builtin.set_fact:
-    net_ctl_srv: "{{  ( nm_state == 'running' )
-                        | ternary('nm', 'networkd') }}"
+    net_ctl_srv: >-
+      {{  ( nm_state == 'running' ) | ternary('nm', 'networkd') }}
   vars:
     nm_state: "{{ services['NetworkManager.service']['state'] | default }}"

@@ -1,42 +1,76 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible:noai
 #
-# Configure bridged interfaces based on the ifaces list in host_vars
-# and nets dictionary in group_vars.
+# Configure a network bridge
 #
 ########################################################################
 
-# All bridges need a vether device in OpenBSD
-- name: Initialize bridge members list
+- name: Define the bridge name
   ansible.builtin.set_fact:
-    bridge_members: []
+    bridge_dev: "{{ 'bridge' +  site_subnets[bridge_net_item]['subnet_id']
+                                | string }}"
 
-# Interfaces in the inventory that specify a the bridge.
-- name: Enumerate physical interfaces in the bridge
+- name: "Add physical interface members to bridge {{ bridge_dev }}"
   ansible.builtin.set_fact:
     bridge_members: "{{ bridge_members
-                        | union([dev_item]) }}"
+                        | default([])
+                        | union( [dev_item] ) }}"
   loop: "{{ phy_ifaces
             | selectattr('bridge', 'defined')
-            | selectattr('bridge', '==', bridge_item)
-            | map (attribute='dev') }}"
+            | selectattr('bridge', '==', bridge_net_item)
+            | map(attribute='dev') }}"
   loop_control:
     loop_var: dev_item
 
-# VLAN in the inventory that specify the network associated with the
-# bridge.
-- name: Add VLAN to the bridge
+# If VLAN on the same subnet is configured on the host, bridge to it.
+- name: "Add {{ bridge_vlan_var }} to bridge {{ bridge_dev }}"
   ansible.builtin.set_fact:
     bridge_members: "{{ bridge_members
-                        | union([bridge_vlan]) }}"
+                        | union([bridge_vlan_var]) }}"
   vars:
-    bridge_vlan: "{{ 'vlan' + site_subnets[bridge_item]['subnet_id']
-                              | string }}"
+    bridge_vlan_var: "{{  'vlan'
+                          +  site_subnets[bridge_net_item]['subnet_id']
+                             | string }}"
+  when: bridge_net_item in phy_iface_item['vlans'] | default([])
+  loop: "{{ phy_ifaces }}"
+  loop_control:
+    loop_var: phy_iface_item
 
-- name: Define the bridge name
-  ansible.builtin.set_fact:
-    bridge_dev: "{{ 'bridge' +  site_subnets[bridge_item]['subnet_id']
-                                | string }}"
-
-- name: Save bridge configuration to host
-  ansible.builtin.include_tasks: "cfg_bridge_{{ansible_system}}.yml"
+# Configure the bridge. Currently only supported on OpenBSD.
+- name: Run platform-specific bridge configuration tasks
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
+  vars:
+    prefix_var: cfg_bridge_
+    files_var:
+      files:
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_version | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_distribution | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_os_family | lower }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}_\
+          {{ net_ctl_srv | default }}.yml"
+        - "{{ prefix_var }}\
+          {{ ansible_system | lower }}.yml"
+      paths:
+        - tasks/

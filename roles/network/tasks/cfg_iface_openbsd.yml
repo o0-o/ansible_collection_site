@@ -1,17 +1,46 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Save interface configuration to the host
+# Configure a network interface on OpenBSD
+#
+# Documentation on OpenBSD interface configuration can be found here:
+# https://man.openbsd.org/hostname.if.5
+# https://man.openbsd.org/dhcpleased.conf.5
 #
 ########################################################################
 
-- name: "Configure /etc/hostname.{{iface['dev']}}"
+- name: "Configure /etc/hostname.{{ iface['dev'] }}"
   ansible.builtin.template:
     src: openbsd/hostname.iface.j2
-    dest: "/etc/hostname.{{iface['dev']}}"
+    dest: "/etc/hostname.{{ iface['dev'] }}"
     owner: root
     group: wheel
     mode: 0640
     backup: true
   become: true
-  notify: restart network
+  notify: restart network (openbsd)
+
+- name: Create /etc/dhcpleased.conf
+  ansible.builtin.template:
+    src: openbsd/dhcpleased.conf.j2
+    dest: /etc/dhcpleased.conf
+    owner: root
+    group: wheel
+    mode: 0640
+    force: false
+  become: true
+
+# TODO: Add send no host name option when OpenBSD 7.1 is released
+- name: "Configure the DHCP client for {{ iface['dev'] }}"
+  ansible.builtin.lineinfile:
+    path: /etc/dhcpleased.conf
+    regexp: "^interface {{ iface['dev'] }} "
+    insertbefore: EOF
+    line: "interface {{ iface['dev'] }} { send client id \"{{ id_var }}\" }"
+    validate: /sbin/dhcpleased -nf %s
+  become: true
+  vars:
+    id_var: "{{ 'ff:' + iface['dhcp_client_id'] }}"
+  when:
+    - iface['dhcp4']
+    - iface['rand_mac']

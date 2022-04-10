@@ -1,34 +1,37 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Build and validate the subnet defintion.
+# Define subnets and used IP address list
+#
+# Assign subnets a random ID if they are missing one and initialize the
+# IP address list.
 #
 ########################################################################
 
-- name: Define the subnet
+- name: "Assign a random ID to the subnet {{ subnet_name_item }}"
   ansible.builtin.set_fact:
-    subnet: "{{ site_subnets[subnet_name_item] }}"
-
-- name: If a single IP address is provided, ensure it is a list of one
-  ansible.builtin.set_fact:
-    subnet: "{{ subnet | combine({'addrs': [subnet['addrs']]}) }}"
-  when:
-  - subnet['addr'] is defined
-  - subnet['addr'] | debug_type == 'str'
-
-# Idempotent if networks are defined in the same order
-- name: Assign random network ID to the network if one doesn't already exist
-  ansible.builtin.set_fact:
-    subnet: "{{ subnet | combine({'subnet_id': rand_id_var}) }}"
-  when: site['id'] is undefined
+    site_subnets: >-
+      {{  site_subnets | combine( subnet_dict_var, recursive=true ) }}
+  changed_when: true
   vars:
+    used_subnet_ids_var: "{{  site_subnets.keys()
+                              | list
+                              | map('extract', site_subnets, 'subnet_id')
+                              | select('defined') }}"
     rand_id_var: "{{  range(2, 256)
                       | list
-                      | difference( subnet_ids | default([]) )
-                      | random(seed=subnet_name_item) }}"
+                      | difference(used_subnet_ids_var)
+                      | random }}"
+    id_dict_var: "{{ { 'subnet_id': rand_id_var } }}"
+    subnet_dict_var: "{{ { subnet_name_item: id_dict_var } }}"
+  when: site_subnets[subnet_name_item]['subnet_id'] is undefined
+  notify: save site subnets var
 
-- name: Update site networks list
+- name: "Define IP address dictionary for subnet {{ subnet_name_item }}"
   ansible.builtin.set_fact:
-    new_site_subnets: "{{ new_site_subnets
-                          | default({})
-                          | combine({subnet_name_item: subnet}) }}"
+    site_ips: "{{ site_ips
+                  | default({})
+                  | combine(subnet_ips_var) }}"
+  vars:
+    ips_var: "{{ site_ips[subnet_name_item] | default({}) }}"
+    subnet_ips_var: "{{ { subnet_name_item: ips_var } }}"

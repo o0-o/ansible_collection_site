@@ -1,17 +1,23 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 #
-# Build a list of dictionaries for each physical network interface by
-# parsing dmesg. This is a last resort as dmesg can be an unreliable
-# source of information. However, we do take some steps to ensure that
-# the data is valid.
+# Define all discovered physical interfaces (Linux)
 #
-# If a network device shows up in dmesg in but was not present when
+# Use dmesg to gather hardware MAC address and device names. This is a
+# last resort as dmesg can be an unreliable source of information.
+# However, we do take some steps to ensure that the data is valid.
+#
+# If a network device shows up in dmesg but was not present when
 # Ansible gathered facts (device name not included in
-# ansible_interfaces), it is not included in the list.
+# ansible_interfaces), it is not included in the list. Results where a
+# MAC address is identified but no interface is found are also not
+# included.
 #
-# Results where a MAC address is identified but no interface is found
-# are also not included.
+# The main danger here is if the dmesg buffer becomes full and no longer
+# prints early boot messages where we can find the MAC addresses.
+# Fortunately though, this mainly affects some Linux distros and macOS
+# which will use the ip command and system_profiler methods instead of
+# dmesg.
 #
 ########################################################################
 
@@ -39,13 +45,13 @@
   vars:
     hw_addr_re_var: '([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}'
   when:
-  - iface_lines_item
-    | map('regex_replace', ':', '')
-    | intersect(ansible_interfaces)
-    != []
-  - iface_lines_item
-    | select( 'match', '^' + hw_addr_re_var + '$' )
-    != []
+    - iface_lines_item
+      | map('regex_replace', ':', '')
+      | intersect(ansible_interfaces)
+      != []
+    - iface_lines_item
+      | select( 'match', '^' + hw_addr_re_var + '$' )
+      != []
   loop: "{{ dmesg_reg['stdout_lines']
             | map('lower')
             | select('match', '^.*' + hw_addr_re_var + '.*$')
