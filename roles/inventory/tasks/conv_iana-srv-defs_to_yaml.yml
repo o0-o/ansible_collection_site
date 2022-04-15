@@ -20,7 +20,7 @@
       /assignments\
       /service-names-port-numbers\
       /service-names-port-numbers.csv"
-    return_content: yes
+    return_content: true
   register: iana_srv_def_csv_reg
 
 # This takes a long time and may appear to hang for extended periods but
@@ -78,11 +78,11 @@
     marker: '# {mark} ANSIBLE MANAGED BLOCK: IANA Service Definitions'
     block: |
       # To update, run tasks/conv_iana-srv-defs_to_yaml.yml
-      # Converted to YAML on {{ansible_date_time['date']}}
+      # Converted to YAML on {{ ansible_date_time['date'] }}
       iana_srv_defs:
         {{  iana_srv_def
             | to_nice_yaml(width=1023, indent=2)
             | indent(2) }}
-    dest: "{{role_path}}/defaults/main.yml"
-    backup: yes
+    dest: "{{ role_path }}/defaults/main.yml"
+    backup: true
   delegate_to: 127.0.0.1

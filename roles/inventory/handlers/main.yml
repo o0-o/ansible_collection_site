@@ -3,7 +3,7 @@
 
 - name: save service definitions
   ansible.builtin.blockinfile:
-    path: "{{cwd}}/inventory/group_vars/all.yml"
+    path: "{{ cwd }}/inventory/group_vars/all.yml"
     marker: "# {mark} ANSIBLE MANAGED BLOCK: Service Definitions"
     block: "{{  update_srv_def
                 | default(  srv_def
@@ -16,17 +16,17 @@
 
 - name: save site vars
   ansible.builtin.blockinfile:
-    path: "{{cwd}}/inventory/group_vars/all.yml"
-    marker: "# {mark} ANSIBLE MANAGED BLOCK: Site - {{site_uri}}"
+    path: "{{ cwd }}/inventory/group_vars/all.yml"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK: Site - {{ site_uri }}"
     block: |
-      {{site_group}}:
+      {{ site_group }}:
         {{ site | to_nice_yaml(width=1023, indent=2) | indent(2) }}
     backup: true
   delegate_to: 127.0.0.1
 
 - name: save ansible host to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_host:'
     insertbefore: '# Add custom variables below:'
@@ -39,7 +39,7 @@
 
 - name: save ansible user to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_user:'
     insertbefore: '# Add custom variables below:'
@@ -51,7 +51,7 @@
 
 - name: save ansible python interpreter to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_python_interpreter:'
     insertbefore: '# Add custom variables below:'
@@ -66,7 +66,7 @@
 
 - name: save ansible become method to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_become_method:'
     insertbefore: '# Add custom variables below:'
@@ -80,7 +80,7 @@
 
 - name: save ansible port to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_port:'
     insertbefore: '# Add custom variables below:'
@@ -92,7 +92,7 @@
 
 - name: save ansible ssh private key file to host vars
   ansible.builtin.lineinfile:
-    path: "{{cwd}}/inventory/host_vars\
+    path: "{{ cwd }}/inventory/host_vars\
       /{{ update_hostname | default(inventory_hostname) }}.yml"
     regexp: '^#?ansible_ssh_private_key_file:'
     insertbefore: '# Add custom variables below:'

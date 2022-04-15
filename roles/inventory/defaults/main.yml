@@ -15,10 +15,7 @@ default_comment_postfix: |
   ########################################################################
 
 # Current Working Directory
-cwd: "{{lookup('env', 'PWD')}}"
-
-# Service Definitions
-srv_defs: {}
+cwd: "{{ lookup('env', 'PWD') }}"
 
 # BEGIN ANSIBLE MANAGED BLOCK: IANA Service Definitions
 # To update, run tasks/conv_iana-srv-defs_to_yaml.yml

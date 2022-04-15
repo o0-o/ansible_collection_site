@@ -22,5 +22,5 @@ github.com/o0-o/ansible_collection_site/tree/main/roles/inventory"
                 postfix=default_comment_postfix | default() ) }}
 all:
   children:
-    {{site_group}}:
+    {{ site_group }}:
       hosts:

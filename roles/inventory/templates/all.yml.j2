@@ -26,9 +26,9 @@ srv_defs:
       | trim }}
 # END ANSIBLE MANAGED BLOCK: Service Definitions
 
-# BEGIN ANSIBLE MANAGED BLOCK: Site - {{site_uri}}
-{{site_group}}:
+# BEGIN ANSIBLE MANAGED BLOCK: Site - {{ site_uri }}
+{{ site_group }}:
   {{ site | to_nice_yaml(width=1023, indent=2) | indent(2) | trim }}
-# END ANSIBLE MANAGED BLOCK: Site - {{site_uri}}
+# END ANSIBLE MANAGED BLOCK: Site - {{ site_uri }}
 
 # Add custom variables below:
