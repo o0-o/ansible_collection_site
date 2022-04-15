@@ -1,0 +1,5 @@
+---
+# vim: ts=2:sw=2:sts=2:et:ft=yaml
+
+sudo_grant_passwordless_admin: "\
+  ALL=(ALL) TYPE=sysadm_t ROLE=sysadm_r NOPASSWD: ALL"

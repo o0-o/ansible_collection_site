@@ -1,0 +1,4 @@
+---
+adm_groups:
+- adm
+- systemd-journal
