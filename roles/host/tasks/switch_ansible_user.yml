@@ -8,7 +8,7 @@
 - name: New user can connect to the host
   ansible.builtin.ping:
   vars:
-    ansible_user: "{{new_ansible_user}}"
+    ansible_user: "{{ new_ansible_user }}"
 
 - name: New user can escalate privileges (become method)
   ansible.builtin.shell:
@@ -16,14 +16,14 @@
   changed_when: false
   become: true
   vars:
-    ansible_user: "{{new_ansible_user}}"
+    ansible_user: "{{ new_ansible_user }}"
 
 - name: Save old Ansible user name before updating to new user
   ansible.builtin.set_fact:
-    old_ansible_user: "{{ansible_user}}"
+    old_ansible_user: "{{ ansible_user }}"
 
 - name: Set new Ansible user
   ansible.builtin.set_fact:
-    ansible_user: "{{new_ansible_user}}"
+    ansible_user: "{{ new_ansible_user }}"
   changed_when: old_ansible_user != new_ansible_user
   notify: save host vars

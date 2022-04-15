@@ -15,14 +15,12 @@
 - name: SELinux is available
   ansible.builtin.set_fact:
     selinux_available: true
-  when:
-  - selinux_check_reg['rc'] == 0
+  when: selinux_check_reg['rc'] == 0
 
 - name: SELinux is unavailable
   ansible.builtin.set_fact:
     selinux_available: false
-  when:
-  - selinux_check_reg['rc'] != 0
+  when: selinux_check_reg['rc'] != 0
 
 - name: Enable SELinux
   ansible.posix.selinux:

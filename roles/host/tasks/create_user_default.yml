@@ -7,7 +7,7 @@
 
 - name: Create ansible user
   ansible.builtin.user:
-    name: "{{new_user_var}}"
+    name: "{{ new_user_var }}"
     password_lock: true
   register: user_changed
   become: true

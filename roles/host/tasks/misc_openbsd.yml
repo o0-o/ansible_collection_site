@@ -1,5 +1,9 @@
 ---
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
+#
+# Perform miscellaneous OpenBSD configuration.
+#
+########################################################################
 
 # https://man.openbsd.org/accton.8
 - name: Enable accounting
@@ -13,6 +17,8 @@
     name: slaacd
     enabled: no
     state: stopped
+
+# TODO: posix.sysctl doesn't appear to work on OpenBSD?
 
 # https://man.openbsd.org/free.3
 # https://marc.info/?l=openbsd-tech&m=152536315412851&w=2
@@ -31,8 +37,9 @@
     sysctl_set: true
     state: present
 
+# TODO: Use slurp
 - name: Check if altroot partition exists
-  ansible.builtin.shell:
+  ansible.builtin.command:
     cmd: 'grep "[[:space:]]/altroot[[:space:]]*ffs[[:space:]]*xx" /etc/fstab'
   register: altroot_mount_reg
   changed_when: false

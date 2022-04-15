@@ -8,6 +8,6 @@
 # Ansible user module's password_lock option fails on macOS
 - name: Create ansible user (macOS)
   ansible.builtin.user:
-    name: "{{new_user_var}}"
+    name: "{{ new_user_var }}"
   register: user_changed
   become: true

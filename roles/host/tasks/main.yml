@@ -5,6 +5,9 @@
 #
 ########################################################################
 
+- name: Clear any cached facts
+  ansible.builtin.meta: clear_facts
+
 - name: Configure connection to host
   ansible.builtin.include_tasks: cfg_con.yml
 
@@ -21,20 +24,19 @@
   ansible.builtin.include_tasks: cfg_time.yml
 
 - name: Install macOS Dependencies
+  when: uname_reg['stdout_lines'][0] | lower == 'darwin'
   block:
 
-  - name: Gather facts
-    ansible.builtin.setup:
+    - name: Gather facts
+      ansible.builtin.setup:
 
-  - name: Install command line tools
-    ansible.builtin.include_role:
-      name: elliotweiser.osx-command-line-tools
+    - name: Install command line tools
+      ansible.builtin.include_role:
+        name: elliotweiser.osx-command-line-tools
 
-  - name: Install Homebrew
-    ansible.builtin.include_role:
-      name: geerlingguy.mac.homebrew
-
-  when: uname_reg['stdout_lines'][0] | lower == 'darwin'
+    - name: Install Homebrew
+      ansible.builtin.include_role:
+        name: geerlingguy.mac.homebrew
 
 - name: Configure Python interpreter
   ansible.builtin.include_tasks: cfg_python.yml
@@ -47,30 +49,30 @@
 
 - name: Install any other Ansible dependencies (except on macOS)
   ansible.builtin.package:
-    name: "{{ansible_dependencies}}"
+    name: "{{ ansible_dependencies }}"
     state: present
   become: true
   when: ansible_system | lower != 'darwin'
 
 - name: Install any other Ansible dependencies (macOS)
   community.general.homebrew:
-    name: "{{ansible_dependencies}}"
+    name: "{{ ansible_dependencies }}"
     state: installed
   when: ansible_system | lower == 'darwin'
 
 - name: Configure SELinux
   ansible.builtin.include_tasks: cfg_selinux.yml
 
-- name: "Set timezone to {{site['tz']}}"
+- name: "Set timezone to {{ site['tz'] }}"
   community.general.timezone:
-    name: "{{site['tz']}}"
+    name: "{{ site['tz'] }}"
   become: true
 
 - name: Create a local admin user for Ansible instead of using root
   ansible.builtin.include_tasks: create_ansible_user.yml
   when:
-  - ansible_user == 'root'
-  - not use_root_user
+    - ansible_user == 'root'
+    - not use_root_user
 
 - name: Grant administrator privileges to new administrator
   ansible.builtin.include_tasks: grant_user_adm.yml

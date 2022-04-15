@@ -8,38 +8,39 @@
 - name: Python is installed
   block:
 
-  - name: Look for python3 or python binaries
-    ansible.builtin.raw: >
-      which python3 2>/dev/null ||
-      command -v python3 ||
-      which python 2>/dev/null ||
-      command -v python
-    register: discover_python_reg
-    changed_when: false
-
-  - name: The Python interpreter is already configured
-    block:
-
-    - name: Python interpreter is valid
-      ansible.builtin.raw: "{{ansible_python_interpreter}} --version"
+    - name: Look for python3 or python binaries
+      ansible.builtin.raw: >
+        which python3 2>/dev/null ||
+        command -v python3 ||
+        which python 2>/dev/null ||
+        command -v python
+      register: discover_python_reg
       changed_when: false
 
-    rescue:
+    - name: The Python interpreter is already configured
+      block:
 
-    - name: Set Python interpreter
-      ansible.builtin.set_fact:
-        ansible_python_interpreter: "{{python_interpreter_var}}"
-      changed_when: true
-      notify: save host vars
-      vars:
-        python_interpreter_var: "{{discover_python_reg['stdout_lines'][0]}}"
+        - name: Python interpreter is valid
+          ansible.builtin.raw: "{{ ansible_python_interpreter }} --version"
+          changed_when: false
+
+        rescue:
+
+        - name: Set Python interpreter
+          ansible.builtin.set_fact:
+            ansible_python_interpreter: "{{ python_interpreter_var }}"
+          changed_when: true
+          vars:
+            python_interpreter_var: >-
+              {{ discover_python_reg['stdout_lines'][0] }}
+          notify: save host vars
 
   rescue:
 
-  - name: "Python installation attempt {{ py_attempt | default(1) }}"
-    ansible.builtin.set_fact:
-      py_attempt: py_attempt | default(0) | int + 1
+    - name: "Python installation attempt {{ py_attempt | default(1) }}"
+      ansible.builtin.set_fact:
+        py_attempt: py_attempt | default(0) | int + 1
 
-  - name: Install Python
-    ansible.builtin.include_tasks: install_python.yml
-    when: py_attempt | int < 2
+    - name: Install Python
+      ansible.builtin.include_tasks: install_python.yml
+      when: py_attempt | int < 2

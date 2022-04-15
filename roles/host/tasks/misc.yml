@@ -2,18 +2,25 @@
 # vim: ts=2:sw=2:sts=2:et:ft=yaml.ansible
 
 - name: Run platform-specific tasks
-  ansible.builtin.include_tasks: "{{lookup('first_found', files_var)}}"
+  ansible.builtin.include_tasks: "{{ lookup('first_found', files_var) }}"
   vars:
+    prefix_var: misc_
     files_var:
       files:
-      - misc_"{{ ansible_distribution| lower }}-\
-        {{ ansible_distribution_version | lower() }}.yml"
-      - misc_"{{ ansible_distribution | lower }}-\
-        {{ ansible_distribution_major_version | default('') | lower }}.yml"
-      - misc_"{{ ansible_distribution | lower }}.yml"
-      - misc_"{{ ansible_service_mgr | lower }}.yml"
-      - misc_"{{ ansible_system | lower }}.yml"
-      - misc_"{{ ansible_os_family | lower }}.yml"
-      - /dev/null
+        - "{{prefix_var}}\
+          {{ ansible_distribution| lower }}-\
+          {{ ansible_distribution_version | lower() }}.yml"
+        - "{{prefix_var}}\
+          {{ ansible_distribution | lower }}-\
+          {{ ansible_distribution_major_version | default('') | lower }}.yml"
+        - "{{prefix_var}}\
+          {{ ansible_distribution | lower }}.yml"
+        - "{{prefix_var}}\
+          {{ ansible_service_mgr | lower }}.yml"
+        - "{{prefix_var}}\
+          {{ ansible_system | lower }}.yml"
+        - "{{prefix_var}}\
+          {{ ansible_os_family | lower }}.yml"
+        - /dev/null
       paths:
-      - tasks/
+        - tasks/
